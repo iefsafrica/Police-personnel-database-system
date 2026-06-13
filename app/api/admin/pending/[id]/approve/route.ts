@@ -86,7 +86,7 @@ export async function PATCH(req: NextRequest) {
       pending.name ||
       "Unnamed Employee";
 
-    const newEmployeeId = `IPPIS${Math.floor(
+    const newEmployeeId = `NPF${Math.floor(
       100000 + Math.random() * 900000
     )}`;
 
