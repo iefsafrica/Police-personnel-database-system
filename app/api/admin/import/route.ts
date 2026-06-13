@@ -103,18 +103,96 @@ export async function POST(req: NextRequest) {
           position,
           status,
           source,
+          
+          hire_date,
+          date_of_birth,
+          marital_status,
+          gender,
+          state_of_origin,
+          lga_origin,
+          job_title,
+          assignment_status,
+          location,
+          zone,
+          supervisor,
+          command,
+          grade_category,
+          grade,
+          step,
+          salary,
+          residence_address,
+          contact_address,
+          telephone_number,
+          nationality,
+          bank_name,
+          sort_code,
+          account_number,
+          pfa_name,
+          pin_number,
+          payroll_group,
+          staff_category,
+          date_terminated,
+          legacy_id,
+          assignment_start_date,
+          person_start_date,
+          date_of_last_promotion,
+          unit,
+          organization_name,
+          employee_type,
+          bvn,
+          tax_id,
+
           created_at,
           updated_at,
           metadata
         ) VALUES (
           ${registrationId},
-          ${row.Surname},
-          ${row.FirstName},
-          ${row.Email},
-          ${row.Department},
-          ${row.RankPosition || row.Position},
+          ${row.Surname || ""},
+          ${row.FirstName || ""},
+          ${row.Email || ""},
+          ${row.Department || null},
+          ${row.RankPosition || row.Position || null},
           'pending_approval',
           'import',
+
+          ${parseDate(row.HireDate || row.DateOfFirstAppointment)},
+          ${parseDate(row.DateOfBirth)},
+          ${row.MaritalStatus || null},
+          ${row.Sex || row.Gender || null},
+          ${row.StateOfOrigin || null},
+          ${row.LGA || row.LGAOfOrigin || null},
+          ${row.JobTitle || row.RankPosition || row.Position || null},
+          ${row.AssignmentStatus || null},
+          ${row.Location || row.WorkLocation || null},
+          ${row.Zone || null},
+          ${row.Supervisor || null},
+          ${row.Command || null},
+          ${row.GradeCategory || row.Cadre || null},
+          ${row.Grade || row.GL || null},
+          ${row.Step || null},
+          ${parseDecimal(row.Salary)},
+          ${row.ResidenceAddress || row.AddressStateOfResidence || null},
+          ${row.ContactAddress || null},
+          ${row.TelephoneNumber || row.PhoneNumber || null},
+          ${row.Nationality || null},
+          ${row.BankName || row.NameOfBank || null},
+          ${row.SortCode || null},
+          ${row.AccountNumber || null},
+          ${row.PFAName || null},
+          ${row.PinNumber || row.RSAPIN || null},
+          ${row.PayrollGroup || null},
+          ${row.StaffCategory || null},
+          ${parseDate(row.DateTerminated)},
+          ${row.LegacyID || row.EmploymentIdNo || null},
+          ${parseDate(row.AssignmentStartDate)},
+          ${parseDate(row.PersonStartDate)},
+          ${parseDate(row.DateOfLastPromotion)},
+          ${row.Unit || row.Department || null},
+          ${row.OrganizationName || row.Organization || null},
+          ${row.EmployeeType || row.EmploymentType || null},
+          ${row.Bvn || row.BVN || null},
+          ${row.TaxId || row.TaxID || null},
+
           NOW(),
           NOW(),
           ${JSON.stringify(jsonData)}
@@ -138,4 +216,16 @@ export async function POST(req: NextRequest) {
       details: error instanceof Error ? error.message : String(error),
     }, 500);
   }
+}
+
+function parseDate(val?: string) {
+  if (!val || !val.trim()) return null;
+  const d = new Date(val.trim());
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function parseDecimal(val?: string) {
+  if (!val || !val.trim()) return null;
+  const num = parseFloat(val.trim().replace(/,/g, ""));
+  return isNaN(num) ? null : num;
 }
