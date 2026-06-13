@@ -2,6 +2,7 @@ import { neon } from "@neondatabase/serverless";
 import { withCors, handleOptions } from "@/lib/cors";
 import { NextRequest } from "next/server";
 import Papa from "papaparse";
+import * as XLSX from "xlsx";
 import { canonicalizeRegistrationId } from "@/lib/registration-id";
 
 export const dynamic = "force-dynamic";
@@ -38,15 +39,27 @@ function getRowValue(row: Record<string, string>, possibleKeys: string[]): strin
   return "";
 }
 
-function parseDate(val?: string) {
-  if (!val || !val.trim()) return null;
-  const d = new Date(val.trim());
+function parseDate(val?: string | number | null) {
+  if (val === undefined || val === null) return null;
+  const strVal = String(val).trim();
+  if (!strVal) return null;
+
+  const num = Number(strVal);
+  if (!isNaN(num) && num >= 10000 && num <= 100000) {
+    // Convert Excel serial date
+    const d = new Date((num - 25569) * 86400 * 1000);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const d = new Date(strVal);
   return isNaN(d.getTime()) ? null : d;
 }
 
-function parseDecimal(val?: string) {
-  if (!val || !val.trim()) return null;
-  const num = parseFloat(val.trim().replace(/,/g, ""));
+function parseDecimal(val?: string | number | null) {
+  if (val === undefined || val === null) return null;
+  const strVal = String(val).trim();
+  if (!strVal) return null;
+  const num = parseFloat(strVal.replace(/,/g, ""));
   return isNaN(num) ? null : num;
 }
 
@@ -131,14 +144,13 @@ async function generateImportRegistrationId(localUsedIds: Set<string>): Promise<
 
 export async function POST(req: NextRequest) {
   try {
-    // Parse input (requires multipart/form-data CSV file upload)
-    let text = "";
+    // Parse input (requires multipart/form-data file upload)
     const contentType = req.headers.get("content-type") || "";
 
     if (!contentType.includes("multipart/form-data")) {
       return withCors(req, { 
         success: false, 
-        error: "No CSV file uploaded. Please attach a CSV file using form-data under the 'file' key." 
+        error: "No file uploaded. Please attach a CSV or Excel file using form-data under the 'file' key." 
       }, 400);
     }
 
@@ -148,47 +160,87 @@ export async function POST(req: NextRequest) {
     if (!isFile(file) || file.size === 0 || !file.name || file.name.trim() === "") {
       return withCors(req, { 
         success: false, 
-        error: "No CSV file uploaded. Please attach a CSV file under the 'file' key in form-data." 
+        error: "No file uploaded. Please attach a CSV or Excel file under the 'file' key in form-data." 
       }, 400);
     }
 
-    const fileNameLower = file.name.toLowerCase();
-    if (!fileNameLower.endsWith(".csv")) {
-      return withCors(req, {
-        success: false,
-        error: "Invalid file format. Please upload a CSV (.csv) file. Excel (.xlsx) or other binary file formats are not supported."
-      }, 400);
-    }
+    let rows: Record<string, string>[] = [];
+    let parsedHeaders: string[] = [];
+    let text = "";
+    const fileNameLower = file.name.trim().toLowerCase();
 
-    text = await file.text();
-
-    if (!text || !text.trim() || text.trim() === "") {
-      return withCors(req, { 
-        success: false, 
-        error: "CSV file is empty. Please attach a CSV file with valid employee data." 
-      }, 400);
-    }
-
-    // Prevent JSON payloads from being treated as CSV
-    const trimmedText = text.trim();
-    if (trimmedText.startsWith("{") || trimmedText.startsWith("[")) {
-      return withCors(req, {
-        success: false,
-        error: "Invalid file content. Request body appears to be JSON instead of CSV. Please attach a valid CSV file."
-      }, 400);
-    }
-
-    const parsed = Papa.parse(text, {
-      header: true,
-      skipEmptyLines: true,
-    });
-
-    const parsedHeaders = parsed.meta.fields || [];
     const expectedHeaders = [
       "firstname", "first_name", "first name", 
       "surname", "last_name", "lastname", "last name",
-      "email", "email_address", "emailaddress", "email address"
+      "email", "email_address", "emailaddress", "email address",
+      "employee name", "employee_name", "employeename", "name", "fullname", "full name", "full_name",
+      "staff id", "staffid", "staff_id", "employee id", "employeeid", "employee_id", "employment id", "employment_id"
     ];
+
+    if (fileNameLower.endsWith(".csv")) {
+      text = await file.text();
+
+      if (!text || !text.trim() || text.trim() === "") {
+        return withCors(req, { 
+          success: false, 
+          error: "CSV file is empty. Please attach a CSV file with valid employee data." 
+        }, 400);
+      }
+
+      // Prevent JSON payloads from being treated as CSV
+      const trimmedText = text.trim();
+      if (trimmedText.startsWith("{") || trimmedText.startsWith("[")) {
+        return withCors(req, {
+          success: false,
+          error: "Invalid file content. Request body appears to be JSON instead of CSV. Please attach a valid CSV file."
+        }, 400);
+      }
+
+      const parsed = Papa.parse(text, {
+        header: true,
+        skipEmptyLines: true,
+      });
+
+      parsedHeaders = parsed.meta.fields || [];
+      rows = parsed.data as Record<string, string>[];
+    } else if (fileNameLower.endsWith(".xlsx") || fileNameLower.endsWith(".xls")) {
+      try {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(new Uint8Array(buffer), { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        if (!sheetName) {
+          return withCors(req, {
+            success: false,
+            error: "Excel file is empty (has no sheets)."
+          }, 400);
+        }
+        const worksheet = workbook.Sheets[sheetName];
+        if (!worksheet) {
+          return withCors(req, {
+            success: false,
+            error: "Failed to read Excel worksheet."
+          }, 400);
+        }
+        
+        // Parse rows
+        rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" }) as Record<string, string>[];
+        
+        // Parse headers
+        const sheetHeaderRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as string[][];
+        parsedHeaders = (sheetHeaderRows[0] || []).map(h => String(h || ""));
+      } catch (err: any) {
+        return withCors(req, {
+          success: false,
+          error: "Failed to parse Excel file.",
+          details: err.message || String(err)
+        }, 400);
+      }
+    } else {
+      return withCors(req, {
+        success: false,
+        error: `Invalid file format. Please upload a CSV (.csv) or Excel (.xlsx) file. Received file: "${file.name}".`
+      }, 400);
+    }
 
     const hasValidHeader = parsedHeaders.some(h => {
       const norm = h.toLowerCase().trim().replace(/[\s_-]/g, "");
@@ -198,23 +250,21 @@ export async function POST(req: NextRequest) {
     if (!hasValidHeader) {
       return withCors(req, {
         success: false,
-        error: "Invalid CSV format. Could not find any valid employee headers (e.g. FirstName, Surname, Email). Please verify your CSV columns.",
+        error: "Invalid file format. Could not find any valid employee headers (e.g. FirstName, Surname, Email). Please verify your columns.",
         debugInfo: {
-          fileName: isFile(file) ? file.name : "Not a file",
-          fileSize: isFile(file) ? file.size : "Not a file",
-          fileType: isFile(file) ? file.type : "Not a file",
-          textSnippet: text.slice(0, 500),
-          contentType
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type,
+          contentType,
+          parsedHeaders
         }
       }, 400);
     }
 
-    const rows = parsed.data as Record<string, string>[];
     if (rows.length === 0) {
       return withCors(req, { 
         success: false, 
-        error: "CSV file has no data rows. Please attach a CSV file with valid employee data.", 
-        details: parsed.errors 
+        error: "File has no data rows. Please attach a CSV or Excel file with valid employee data." 
       }, 400);
     }
 
@@ -227,11 +277,54 @@ export async function POST(req: NextRequest) {
       rowIndex++;
       try {
         // Retrieve and normalize fields
+        const rawRegistrationId = getRowValue(row, ["EmploymentIdNo", "employment_id_no", "Employee ID", "EmployeeID", "Staff ID", "staff_id"]);
+        let surname = getRowValue(row, ["Surname", "surname", "Last Name", "lastname", "last_name"]);
+        let firstname = getRowValue(row, ["FirstName", "firstname", "First Name", "first_name"]);
+        const employeeName = getRowValue(row, ["Employee Name", "employee_name", "employeename", "Name", "name", "Full Name", "fullname", "full_name"]);
+
+        // Perform name splitting if separate first name/surname are missing or empty
+        if ((!firstname || !surname) && employeeName) {
+          const tokens = employeeName.trim().split(/\s+/);
+          if (tokens.length > 0) {
+            if (!surname) {
+              surname = tokens[0] || "";
+            }
+            if (!firstname) {
+              firstname = tokens.slice(1).join(" ");
+            }
+          }
+        }
+
+        // Determine / Generate Registration ID early
+        let registrationId = "";
+        if (rawRegistrationId) {
+          registrationId = canonicalizeRegistrationId(rawRegistrationId);
+          // Check for registrationId duplicates
+          const regExists = await sql`
+            SELECT 1 FROM registrations WHERE registration_id = ${registrationId} LIMIT 1
+          `;
+          const pendingExists = await sql`
+            SELECT 1 FROM pending_employees WHERE registration_id = ${registrationId} LIMIT 1
+          `;
+          if (regExists.length > 0 || pendingExists.length > 0 || localUsedIds.has(registrationId)) {
+            throw new Error(`Registration ID "${registrationId}" is already in use.`);
+          }
+          localUsedIds.add(registrationId);
+        } else {
+          registrationId = await generateImportRegistrationId(localUsedIds);
+        }
+
+        // Email fallback generation using registrationId
+        let email = getRowValue(row, ["Email", "email", "Email Address", "email_address"]).trim();
+        if (!email) {
+          email = `${registrationId.toLowerCase()}@npf.gov.ng`;
+        }
+
         const extracted = {
-          registrationId: getRowValue(row, ["EmploymentIdNo", "employment_id_no", "Employee ID", "EmployeeID", "Staff ID", "staff_id"]),
-          surname: getRowValue(row, ["Surname", "surname", "Last Name", "lastname", "last_name"]),
-          firstname: getRowValue(row, ["FirstName", "firstname", "First Name", "first_name"]),
-          email: getRowValue(row, ["Email", "email", "Email Address", "email_address"]),
+          registrationId,
+          surname,
+          firstname,
+          email,
           department: getRowValue(row, ["Department", "department", "dept", "Unit", "unit"]),
           position: getRowValue(row, ["Position", "position", "RankPosition", "rank_position", "Job Title", "job_title"]),
           hire_date: getRowValue(row, ["HireDate", "hire_date", "Date of First Appointment", "date_of_first_appointment", "DateOfFirstAppointment", "Hire Date"]),
@@ -293,25 +386,6 @@ export async function POST(req: NextRequest) {
         `;
         if (activeEmailExists.length > 0) {
           throw new Error(`Email "${extracted.email}" is already registered to an active employee.`);
-        }
-
-        // Determine / Generate Registration ID
-        let registrationId = "";
-        if (extracted.registrationId) {
-          registrationId = canonicalizeRegistrationId(extracted.registrationId);
-          // Check for registrationId duplicates
-          const regExists = await sql`
-            SELECT 1 FROM registrations WHERE registration_id = ${registrationId} LIMIT 1
-          `;
-          const pendingExists = await sql`
-            SELECT 1 FROM pending_employees WHERE registration_id = ${registrationId} LIMIT 1
-          `;
-          if (regExists.length > 0 || pendingExists.length > 0 || localUsedIds.has(registrationId)) {
-            throw new Error(`Registration ID "${registrationId}" is already in use.`);
-          }
-          localUsedIds.add(registrationId);
-        } else {
-          registrationId = await generateImportRegistrationId(localUsedIds);
         }
 
         // NIN validation status
@@ -555,7 +629,9 @@ export async function POST(req: NextRequest) {
         failedRows.push({
           rowNumber: rowIndex,
           email: row.Email || row.email || "Unknown",
-          error: err.message || String(err)
+          error: err.message || String(err),
+          debugRowKeys: Object.keys(row),
+          debugRowSample: JSON.stringify(row).slice(0, 300)
         });
       }
     }
