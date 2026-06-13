@@ -1,9 +1,9 @@
 export function normalizeRegistrationId(value: string): string {
   const cleaned = value.trim().toUpperCase();
 
-  const ippisMatch = cleaned.match(/^IPPIS[-\s_]*0*(\d+)$/);
-  if (ippisMatch) {
-    return `IPPIS${ippisMatch[1]}`;
+  const npfMatch = cleaned.match(/^NPF[-\s_]*0*(\d+)$/);
+  if (npfMatch) {
+    return `NPF${npfMatch[1]}`;
   }
 
   return cleaned.replace(/[^A-Z0-9]/g, "");
@@ -11,7 +11,7 @@ export function normalizeRegistrationId(value: string): string {
 
 export function canonicalizeRegistrationId(value: string): string {
   const normalized = normalizeRegistrationId(value);
-  const match = normalized.match(/^IPPIS(\d+)$/);
+  const match = normalized.match(/^NPF(\d+)$/);
 
   if (!match) {
     return value.trim().toUpperCase();
@@ -19,11 +19,11 @@ export function canonicalizeRegistrationId(value: string): string {
 
   const digits = match[1] ?? "";
   const width = Math.max(4, digits.length);
-  return `IPPIS-${digits.padStart(width, "0")}`;
+  return `NPF-${digits.padStart(width, "0")}`;
 }
 
 export function buildRegistrationLookupExpression(columnName: string): string {
-  return `regexp_replace(regexp_replace(upper(${columnName}), '[^A-Z0-9]', '', 'g'), '^IPPIS0+', 'IPPIS', '')`;
+  return `regexp_replace(regexp_replace(upper(${columnName}), '[^A-Z0-9]', '', 'g'), '^NPF0+', 'NPF', '')`;
 }
 
 export function resolveRegistrationIdInput(
@@ -44,13 +44,13 @@ export function buildRegistrationIdVariants(value: string): string[] {
   const upper = raw.toUpperCase();
   const canonical = canonicalizeRegistrationId(raw);
   const normalized = normalizeRegistrationId(raw);
-  const compact = normalized.replace(/^IPPIS0+/, "IPPIS");
-  const digits = normalized.replace(/^IPPIS/, "") || "";
+  const compact = normalized.replace(/^NPF0+/, "NPF");
+  const digits = normalized.replace(/^NPF/, "") || "";
   const legacyDigits = digits.replace(/^0+/, "") || "0";
 
-  const spaceVariant = digits ? `IPPIS ${digits.padStart(Math.max(3, digits.length), "0")}` : raw;
-  const dashlessVariant = digits ? `IPPIS${digits.padStart(Math.max(4, digits.length), "0")}` : raw;
-  const legacySpaceVariant = `IPPIS ${legacyDigits.padStart(3, "0")}`;
+  const spaceVariant = digits ? `NPF ${digits.padStart(Math.max(3, digits.length), "0")}` : raw;
+  const dashlessVariant = digits ? `NPF${digits.padStart(Math.max(4, digits.length), "0")}` : raw;
+  const legacySpaceVariant = `NPF ${legacyDigits.padStart(3, "0")}`;
 
   return Array.from(
     new Set(
@@ -67,3 +67,4 @@ export function buildRegistrationIdVariants(value: string): string[] {
     )
   );
 }
+

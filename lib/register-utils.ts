@@ -9,7 +9,7 @@ export async function generateRegistrationId(): Promise<string> {
   let nextIdNum = 1;
 
   while (true) {
-    const candidate = canonicalizeRegistrationId(`IPPIS-${String(nextIdNum).padStart(4, "0")}`);
+    const candidate = canonicalizeRegistrationId(`NPF-${String(nextIdNum).padStart(4, "0")}`);
     let existing: unknown[] = [];
     for (const variant of buildRegistrationIdVariants(candidate)) {
       existing = await sql`

@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
         } else {
           // 3. Create a brand new registration since none exists by NIN or userRef
           const normalizedRef = userRef.trim().toUpperCase();
-          const isValidIdStructure = normalizedRef.startsWith("IPPIS-");
+          const isValidIdStructure = normalizedRef.startsWith("NPF-");
 
           const regIdToInsert = isValidIdStructure ? normalizedRef : await generateRegistrationId();
 
