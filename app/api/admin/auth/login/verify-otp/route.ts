@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
 
     // 2️⃣ Fetch OTP from DB
     const otpResult = await sql`
-      SELECT id, otp_hash, expires_at
+      SELECT id, otp_hash, expires_at,
+             (expires_at < NOW()) as is_expired
       FROM admin_otps
       WHERE admin_id = ${user.id}
       LIMIT 1
@@ -65,11 +66,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const now = new Date();
-    const expiresAt = new Date(storedOTP.expires_at);
-
     // 3️⃣ Check expiration
-    if (now > expiresAt) {
+    if (storedOTP.is_expired) {
       await sql`DELETE FROM admin_otps WHERE id = ${storedOTP.id}`;
       return NextResponse.json(
         { success: false, message: "OTP expired. Request a new one." },

@@ -71,7 +71,6 @@ export async function POST(req: NextRequest) {
     // 2️⃣ Generate OTP
     const otp = generateOTP();
     const otpHash = hashOTP(otp);
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
     // 3️⃣ Remove any previous OTPs
     await sql`
@@ -82,7 +81,7 @@ export async function POST(req: NextRequest) {
     // 4️⃣ Store new OTP hashed in DB
     await sql`
       INSERT INTO admin_otps (admin_id, otp_hash, expires_at)
-      VALUES (${user.id}, ${otpHash}, ${expiresAt})
+      VALUES (${user.id}, ${otpHash}, NOW() + INTERVAL '5 minutes')
     `;
 
     // 5️⃣ Send OTP via email
