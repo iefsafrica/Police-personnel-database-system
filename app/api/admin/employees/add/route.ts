@@ -234,7 +234,7 @@ export async function POST(req: NextRequest) {
     // 5. Send Email
     const baseUrl = process.env.APP_URL || "https://ipphis.com";
     const registrationLink = `${baseUrl}/register?email=${encodeURIComponent(email)}`;
-    
+
     const message = `Dear ${firstname},
 
 Your employee profile has been created in the IPPHIS system by an administrator.
