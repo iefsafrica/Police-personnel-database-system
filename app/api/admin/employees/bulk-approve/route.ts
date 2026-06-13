@@ -14,6 +14,8 @@ type PendingEmployee = {
   email: string
   position: string
   department?: string
+  unit?: string
+  command?: string
   status?: string
   metadata?: Record<string, any>
 }
@@ -56,7 +58,7 @@ export async function POST(req: NextRequest) {
         const name = `${employee.firstname ?? ""} ${employee.surname ?? ""}`.trim()
         const email = employee.email
         const position = employee.position
-        const department = employee.department ?? null
+        const department = employee.department || employee.unit || employee.command || "General"
 
         if (!name || !email || !position) {
           results.failed.push({ id: registrationId, error: "Missing required fields" })
