@@ -189,6 +189,40 @@ export async function POST(req: NextRequest) {
       )
     `;
 
+    // --- Fallbacks for Required DB Fields ---
+    const fallbackTitle = title || "Mr";
+    const fallbackTelephone = telephoneno || "0000000000";
+    const fallbackBirthdate = birthdate || "1970-01-01";
+    const fallbackGender = gender || "Unknown";
+    const fallbackMaritalStatus = maritalstatus || "Single";
+    const fallbackStateOfOrigin = state_of_origin || "Unknown";
+    const fallbackResidenceLga = residence_lga || "Unknown";
+    const fallbackResidenceState = residence_state || "Unknown";
+    const fallbackResidenceAddress = residence_address || "Unknown";
+    const fallbackNokName = next_of_kin_name || "Unknown";
+    const fallbackNokRelationship = next_of_kin_relationship || "Unknown";
+    const fallbackNokPhone = next_of_kin_phone_number || "0000000000";
+    const fallbackNokAddress = next_of_kin_address || "Unknown";
+
+    const fallbackEmploymentId = employment_id_no || `EMP-${registrationId.substring(0, 8)}`;
+    const fallbackServiceNo = service_no || "N/A";
+    const fallbackFileNo = file_no || "N/A";
+    const fallbackRankPosition = rank_position || position || "N/A";
+    const fallbackDepartment = department || "N/A";
+    const fallbackOrganization = organization || "Police Force";
+    const fallbackEmploymentType = employment_type || "Permanent";
+    const fallbackProbationPeriod = probation_period || "None";
+    const fallbackWorkLocation = work_location || "N/A";
+    const fallbackDateOfFirstAppointment = date_of_first_appointment || "1970-01-01";
+    const fallbackGl = grade_level || "1";
+    const fallbackStep = step || "1";
+    const fallbackSalaryStructure = salary_structure || "CONPSS";
+    const fallbackCadre = cadre || "N/A";
+    const fallbackBankName = bank_name || "N/A";
+    const fallbackAccountNumber = account_number || "0000000000";
+    const fallbackPfaName = pfa_name || "N/A";
+    const fallbackRsaPin = rsa_pin || "N/A";
+
     // 3. Insert into personal_info
     await sql`
       INSERT INTO personal_info (
@@ -198,15 +232,21 @@ export async function POST(req: NextRequest) {
         next_of_kin_phone_number, next_of_kin_address
       )
       VALUES (
-        ${registrationId}, ${title}, ${surname}, ${firstname}, ${middlename}, ${telephoneno}, ${email},
-        ${birthdate}, ${gender}, ${maritalstatus}, ${state_of_origin}, ${residence_lga}, ${residence_state},
-        ${residence_address}, ${next_of_kin_name}, ${next_of_kin_relationship},
-        ${next_of_kin_phone_number}, ${next_of_kin_address}
+        ${registrationId}, ${fallbackTitle}, ${surname}, ${firstname}, ${middlename}, ${fallbackTelephone}, ${email},
+        ${fallbackBirthdate}, ${fallbackGender}, ${fallbackMaritalStatus}, ${fallbackStateOfOrigin}, ${fallbackResidenceLga}, ${fallbackResidenceState},
+        ${fallbackResidenceAddress}, ${fallbackNokName}, ${fallbackNokRelationship},
+        ${fallbackNokPhone}, ${fallbackNokAddress}
       )
     `;
 
     // 4. Insert into employment_info
-    if (grade_level || step || employment_id_no || organization || bank_name || pfa_name) {
+    const hasEmploymentInfo = !!(
+      grade_level || step || employment_id_no || service_no || file_no || rank_position || department ||
+      organization || employment_type || probation_period || work_location || date_of_first_appointment ||
+      salary_structure || cadre || bank_name || account_number || pfa_name || rsa_pin || position
+    );
+
+    if (hasEmploymentInfo) {
       await sql`
         INSERT INTO employment_info (
           registration_id, employment_id_no, service_no, file_no, rank_position, department,
@@ -214,9 +254,9 @@ export async function POST(req: NextRequest) {
           gl, step, salary_structure, cadre, name_of_bank, account_number, pfa_name, rsapin
         )
         VALUES (
-          ${registrationId}, ${employment_id_no}, ${service_no}, ${file_no}, ${rank_position}, ${department},
-          ${organization}, ${employment_type}, ${probation_period}, ${work_location}, ${date_of_first_appointment},
-          ${grade_level}, ${step}, ${salary_structure}, ${cadre}, ${bank_name}, ${account_number}, ${pfa_name}, ${rsa_pin}
+          ${registrationId}, ${fallbackEmploymentId}, ${fallbackServiceNo}, ${fallbackFileNo}, ${fallbackRankPosition}, ${fallbackDepartment},
+          ${fallbackOrganization}, ${fallbackEmploymentType}, ${fallbackProbationPeriod}, ${fallbackWorkLocation}, ${fallbackDateOfFirstAppointment},
+          ${fallbackGl}, ${fallbackStep}, ${fallbackSalaryStructure}, ${fallbackCadre}, ${fallbackBankName}, ${fallbackAccountNumber}, ${fallbackPfaName}, ${fallbackRsaPin}
         )
       `;
     }
