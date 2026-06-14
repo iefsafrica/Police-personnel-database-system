@@ -1,14 +1,20 @@
-import { Resend } from 'resend';
+import nodemailer from "nodemailer";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+export const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT),
+  secure: process.env.SMTP_SECURE === "true",
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
 
 export async function sendOTPEmail(to: string, otp: string) {
-  console.log(`[OTP Email] Attempting to send OTP to: ${to}`);
-
-  const { data, error } = await resend.emails.send({
-    from: 'IPPIS Admin <onboarding@resend.dev>',
+  const info = await transporter.sendMail({
+    from: `"IPPIS Admin" <${process.env.SMTP_USER}>`,
     to,
-    subject: 'Your Admin OTP Code',
+    subject: "Your Admin OTP Code",
     html: `
       <div style="font-family: Arial, sans-serif; text-align: center;">
         <h2>Admin Login Verification</h2>
@@ -18,12 +24,5 @@ export async function sendOTPEmail(to: string, otp: string) {
       </div>
     `,
   });
-
-  if (error) {
-    console.error(`[OTP Email] Failed to send OTP to ${to}:`, error);
-    throw new Error(`Failed to send OTP email: ${error.message}`);
-  }
-
-  console.log(`[OTP Email] OTP sent successfully to ${to}. Message ID: ${data?.id}`);
-  return data;
+  return info;
 }
