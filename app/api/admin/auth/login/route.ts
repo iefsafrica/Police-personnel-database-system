@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withCors, handleOptions } from '@/lib/cors';
 import { neon } from '@neondatabase/serverless';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -28,16 +29,17 @@ function isAllowedAdminRole(role: string) {
   return ['admin', 'superadmin'].includes(normalizedRole);
 }
 
+export async function OPTIONS(req: NextRequest) {
+  return handleOptions(req);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as LoginRequest;
     const { username, email, password } = body;
 
     if ((!username && !email) || !password) {
-      return NextResponse.json(
-        { success: false, message: 'Username/email and password are required' },
-        { status: 400 }
-      );
+      return withCors(req, { success: false, message: 'Username/email and password are required' }, 400);
     }
 
     const userResult = await sql`
@@ -50,25 +52,16 @@ export async function POST(req: NextRequest) {
     const user = userResult[0] as AdminUserRow | undefined;
 
     if (!user) {
-      return NextResponse.json(
-        { success: false, message: 'User not found' },
-        { status: 401 }
-      );
+      return withCors(req, { success: false, message: 'User not found' }, 401);
     }
 
     const passwordValid = await bcrypt.compare(password, user.password_hash);
     if (!passwordValid) {
-      return NextResponse.json(
-        { success: false, message: 'Invalid password' },
-        { status: 401 }
-      );
+      return withCors(req, { success: false, message: 'Invalid password' }, 401);
     }
 
     if (!isAllowedAdminRole(user.role)) {
-      return NextResponse.json(
-        { success: false, message: 'Access denied: Admin privileges required' },
-        { status: 403 }
-      );
+      return withCors(req, { success: false, message: 'Access denied: Admin privileges required' }, 403);
     }
 
     const token = jwt.sign(
@@ -77,7 +70,7 @@ export async function POST(req: NextRequest) {
       { expiresIn: JWT_EXPIRATION }
     );
 
-    return NextResponse.json({
+    return withCors(req, {
       success: true,
       message: 'Login successful',
       token,
@@ -91,20 +84,17 @@ export async function POST(req: NextRequest) {
 
   } catch (error: any) {
     console.error('Login error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        message: 'Something went wrong during login',
-        errorCode: error?.code ?? error?.name ?? 'Unknown',
-        errorDetail: error?.message ?? String(error),
-      },
-      { status: 500 }
-    );
+    return withCors(req, {
+      success: false,
+      message: 'Something went wrong during login',
+      errorCode: error?.code ?? error?.name ?? 'Unknown',
+      errorDetail: error?.message ?? String(error),
+    }, 500);
   }
 }
 
-export async function GET() {
-  return NextResponse.json({
+export async function GET(req: NextRequest) {
+  return withCors(req, {
     endpoint: '/api/admin/auth/login',
     status: 'active',
     message: 'Admin Auth API is running',
