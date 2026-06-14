@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withCors, handleOptions } from "@/lib/cors";
 import { neon } from '@neondatabase/serverless';
 import bcrypt from 'bcryptjs';
-import crypto from 'crypto'; 
-import { sendOTPEmail } from '@lib/email';
+import jwt from 'jsonwebtoken';
 
 const sql = neon(process.env.DATABASE_URL!);
+const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_EXPIRATION = '1h';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,14 +22,6 @@ type AdminUserRow = {
   password_hash: string;
   role: string;
 };
-
-function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-function hashOTP(otp: string) {
-  return crypto.createHash('sha256').update(otp).digest('hex');
-}
 
 function isAllowedAdminRole(role: string) {
   const normalizedRole = role.replace(/\s+/g, '').toLowerCase();
@@ -48,7 +40,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1?? Fetch user
     const userResult = await sql`
       SELECT id, username, email, password_hash, role
       FROM admin_users
@@ -65,7 +56,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2?? Validate password
     const passwordValid = await bcrypt.compare(password, user.password_hash);
     if (!passwordValid) {
       return NextResponse.json(
@@ -74,7 +64,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3?? Validate role
     if (!isAllowedAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, message: 'Access denied: Admin privileges required' },
@@ -82,30 +71,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4?? Generate OTP
-    const otp = generateOTP();
-    const otpHash = hashOTP(otp);
-
-    // Delete existing OTPs for this admin
-    await sql`DELETE FROM admin_otps WHERE admin_id = ${user.id}`;
-
-    // Store new OTP (expires in 5 minutes)
-    await sql`
-      INSERT INTO admin_otps (admin_id, otp_hash, expires_at)
-      VALUES (
-        ${user.id},
-        ${otpHash},
-        NOW() + INTERVAL '5 minutes'
-      )
-    `;
-
-    // 5?? Send OTP email
-    await sendOTPEmail(user.email, otp);
+    const token = jwt.sign(
+      { id: user.id, username: user.username, role: user.role },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRATION }
+    );
 
     return NextResponse.json({
       success: true,
-      message: 'OTP sent to your registered email.',
-      requiresOTP: true
+      message: 'Login successful',
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+      },
     });
 
   } catch (error: any) {
