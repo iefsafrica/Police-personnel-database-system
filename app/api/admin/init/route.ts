@@ -14,9 +14,9 @@ export async function OPTIONS(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     // 1️⃣ Seed Super Admin
-    const superAdminEmail = "iefsafrica@gmail.com";
+    const superAdminEmail = "oluwolefsamson44@gmail.com";
     const superAdminUsername = "superadmin";
-    const superAdminPassword = "Admin@commisional$123";
+    const superAdminPassword = "Oluwole7710";
     const superAdminFullName = "Super Admin";
     const superAdminRole = "superadmin";
 
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       // Update password hash just in case
       userResult = await sql`
         UPDATE admin_users
-        SET password_hash = ${passwordHash}, role = ${superAdminRole}, full_name = ${superAdminFullName}, is_active = true, updated_at = NOW()
+        SET email = ${superAdminEmail}, username = ${superAdminUsername}, password_hash = ${passwordHash}, role = ${superAdminRole}, full_name = ${superAdminFullName}, is_active = true, updated_at = NOW()
         WHERE id = ${existingSuperAdmin[0]!.id}
         RETURNING id, username, email, full_name, role, is_active
       `;

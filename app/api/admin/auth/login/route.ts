@@ -108,10 +108,15 @@ export async function POST(req: NextRequest) {
       requiresOTP: true
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Login error:', error);
     return NextResponse.json(
-      { success: false, message: 'Something went wrong during login' },
+      {
+        success: false,
+        message: 'Something went wrong during login',
+        errorCode: error?.code ?? error?.name ?? 'Unknown',
+        errorDetail: error?.message ?? String(error),
+      },
       { status: 500 }
     );
   }
