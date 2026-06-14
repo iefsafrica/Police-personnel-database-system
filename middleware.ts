@@ -38,6 +38,7 @@ export async function middleware(request: NextRequest) {
   // Define excluded routes
   const isExcludedRoute = 
     pathname.startsWith('/api/admin/auth/login') ||
+    pathname === '/api/admin/auth/logout' ||
     pathname === '/api/admin/init' ||
     pathname === '/api/admin/setup-db';
 
