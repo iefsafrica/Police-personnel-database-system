@@ -4,6 +4,8 @@ import { NextRequest } from "next/server";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { canonicalizeRegistrationId } from "@/lib/registration-id";
+import { uploadToBlob } from "@/lib/blob-storage";
+import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 
@@ -266,6 +268,30 @@ export async function POST(req: NextRequest) {
         success: false, 
         error: "File has no data rows. Please attach a CSV or Excel file with valid employee data." 
       }, 400);
+    }
+
+    // Upload CSV/Excel spreadsheet to Cloudinary
+    let cloudinaryUrl = "";
+    try {
+      cloudinaryUrl = await uploadToBlob(file, file.name);
+      
+      // Save record in file_manager_files
+      const fileId = `FI-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+      await sql`
+        INSERT INTO file_manager_files (
+          file_id, name, folder_id, file_url, file_type, file_size, uploaded_by, status, employee_id, created_at, updated_at
+        )
+        VALUES (
+          ${fileId}, ${file.name}, NULL, ${cloudinaryUrl}, ${file.type || "text/csv"}, ${file.size}, 'admin_import', 'Approved', NULL, NOW(), NOW()
+        )
+      `;
+    } catch (uploadErr: any) {
+      console.error("Cloudinary upload failed during import:", uploadErr);
+      return withCors(req, {
+        success: false,
+        error: "Failed to upload imported file to Cloudinary storage.",
+        details: uploadErr.message || String(uploadErr)
+      }, 500);
     }
 
     const insertedEmployees = [];
@@ -639,6 +665,7 @@ export async function POST(req: NextRequest) {
     return withCors(req, {
       success: true,
       message: `Bulk import completed: ${insertedEmployees.length} imported successfully, ${failedRows.length} failed.`,
+      fileUrl: cloudinaryUrl,
       summary: {
         totalRows: rows.length,
         successful: insertedEmployees.length,

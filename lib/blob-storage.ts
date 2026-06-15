@@ -1,52 +1,91 @@
-const BLOB_BASE_URL = "https://blob.vercel-storage.com";
+import crypto from "crypto";
 
-function getToken() {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  if (!token) {
-    throw new Error("BLOB_READ_WRITE_TOKEN is not configured");
-  }
-  return token;
+function generateSignature(params: Record<string, any>, apiSecret: string): string {
+  const sortedKeys = Object.keys(params).sort();
+  const paramString = sortedKeys.map(key => `${key}=${params[key]}`).join("&");
+  return crypto.createHash("sha1").update(`${paramString}${apiSecret}`).digest("hex");
 }
 
-export async function uploadToBlob(file: File, fileName: string) {
-  const token = getToken();
-  const response = await fetch(`${BLOB_BASE_URL}/${fileName}`, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": file.type || "application/octet-stream",
-    },
-    body: file,
+export async function uploadToBlob(file: File, fileName: string): Promise<string> {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+  if (!cloudName || !apiKey || !apiSecret) {
+    throw new Error("Cloudinary environment variables are missing");
+  }
+
+  const timestamp = Math.round(Date.now() / 1000);
+  
+  // Clean file name to prevent special character issues in public_id
+  const dotIndex = fileName.lastIndexOf(".");
+  const cleanBaseName = (dotIndex !== -1 ? fileName.substring(0, dotIndex) : fileName)
+    .replace(/[^a-zA-Z0-9_-]/g, "_");
+  const extension = dotIndex !== -1 ? fileName.substring(dotIndex) : "";
+  const publicId = `${cleanBaseName}_${Math.round(Math.random() * 100000)}`;
+
+  const signatureParams = {
+    public_id: publicId,
+    timestamp: timestamp,
+  };
+  const signature = generateSignature(signatureParams, apiSecret);
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("public_id", publicId);
+  formData.append("timestamp", String(timestamp));
+  formData.append("api_key", apiKey);
+  formData.append("signature", signature);
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
+    method: "POST",
+    body: formData,
   });
 
   if (!response.ok) {
-    const details = await response.text().catch(() => "unknown");
-    throw new Error(
-      `Failed to upload ${fileName}: ${response.status} ${details}`
-    );
+    const errorText = await response.text();
+    throw new Error(`Cloudinary upload failed: ${response.status} ${errorText}`);
   }
 
-  return `${BLOB_BASE_URL}/${fileName}`;
+  const result = (await response.json()) as any;
+  return result.secure_url;
 }
 
-export async function deleteFromBlob(url: string) {
-  const token = getToken();
+export async function deleteFromBlob(url: string): Promise<boolean> {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+  if (!cloudName || !apiKey || !apiSecret) return false;
+
+  const urlParts = url.split("/");
+  const uploadIndex = urlParts.indexOf("upload");
+  if (uploadIndex === -1) return false;
+
+  const resourceType = urlParts[uploadIndex - 1] || "auto"; 
   
-  // The URL might be the full public URL, we might need to extract the path or send the full URL depending on the provider.
-  // For Vercel Blob API (via fetch), you usually send a DELETE request to the API with the URL as a query param or in the body.
-  const response = await fetch(`${BLOB_BASE_URL}/delete`, {
-    method: "POST", // Vercel's manual delete API often uses POST /delete with a JSON body
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ url }),
+  // Extract public ID including version bypass
+  const publicIdWithExt = urlParts.slice(uploadIndex + 2).join("/");
+  const dotIndex = publicIdWithExt.lastIndexOf(".");
+  const publicId = dotIndex !== -1 ? publicIdWithExt.substring(0, dotIndex) : publicIdWithExt;
+
+  const timestamp = Math.round(Date.now() / 1000);
+  const signatureParams = {
+    public_id: publicId,
+    timestamp: timestamp,
+  };
+  const signature = generateSignature(signatureParams, apiSecret);
+
+  const formData = new FormData();
+  formData.append("public_id", publicId);
+  formData.append("timestamp", String(timestamp));
+  formData.append("api_key", apiKey);
+  formData.append("signature", signature);
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/destroy`, {
+    method: "POST",
+    body: formData,
   });
 
-  if (!response.ok) {
-    const details = await response.text().catch(() => "unknown");
-    console.error(`Failed to delete blob ${url}: ${response.status} ${details}`);
-  }
-  
   return response.ok;
 }
