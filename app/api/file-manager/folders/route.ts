@@ -12,6 +12,7 @@ type Folder = {
   folder_id: string;
   name: string;
   parent_id?: string;
+  employee_id?: string;
 };
 
 // ---------------- CORS ----------------
@@ -32,10 +33,10 @@ export async function POST(req: NextRequest) {
 
     const result = await db`
       INSERT INTO file_manager_folders (
-        folder_id, name, parent_id, created_at, updated_at
+        folder_id, name, parent_id, employee_id, created_at, updated_at
       )
       VALUES (
-        ${folderId}, ${body.name}, ${body.parent_id ?? null}, NOW(), NOW()
+        ${folderId}, ${body.name}, ${body.parent_id ?? null}, ${body.employee_id ?? null}, NOW(), NOW()
       )
       RETURNING *
     `;
@@ -58,6 +59,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const parentId = searchParams.get("parent_id");
     const folderId = searchParams.get("folder_id");
+    const employeeId = searchParams.get("employee_id");
 
     // Single folder detail
     if (folderId) {
@@ -66,10 +68,17 @@ export async function GET(req: NextRequest) {
       return withCors(req, { success: true, data: single[0] });
     }
 
-    // List folders in a parent (null means Root)
-    const folders = parentId 
-      ? await db`SELECT * FROM file_manager_folders WHERE parent_id = ${parentId} ORDER BY name ASC`
-      : await db`SELECT * FROM file_manager_folders WHERE parent_id IS NULL ORDER BY name ASC`;
+    // List folders in a parent, optionally filtered by employee_id
+    let folders;
+    if (employeeId) {
+      folders = parentId 
+        ? await db`SELECT * FROM file_manager_folders WHERE parent_id = ${parentId} AND employee_id = ${employeeId} ORDER BY name ASC`
+        : await db`SELECT * FROM file_manager_folders WHERE parent_id IS NULL AND employee_id = ${employeeId} ORDER BY name ASC`;
+    } else {
+      folders = parentId 
+        ? await db`SELECT * FROM file_manager_folders WHERE parent_id = ${parentId} ORDER BY name ASC`
+        : await db`SELECT * FROM file_manager_folders WHERE parent_id IS NULL ORDER BY name ASC`;
+    }
 
     return withCors(req, { success: true, data: folders });
 
@@ -97,6 +106,7 @@ export async function PATCH(req: NextRequest) {
       UPDATE file_manager_folders SET
         name = ${body.name ?? f.name},
         parent_id = ${body.parent_id !== undefined ? body.parent_id : f.parent_id},
+        employee_id = ${body.employee_id !== undefined ? body.employee_id : f.employee_id},
         updated_at = NOW()
       WHERE folder_id = ${body.folder_id}
       RETURNING *

@@ -42,6 +42,9 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get("file") as File;
     const folderId = formData.get("folder_id") as string | null;
+    const uploadedBy = formData.get("uploaded_by") as string | null;
+    const employeeId = formData.get("employee_id") as string | null;
+    const status = (formData.get("status") as string | null) || "Pending";
 
     if (!file) {
       return withCors(req, { success: false, error: "No file provided" }, 400);
@@ -57,10 +60,10 @@ export async function POST(req: NextRequest) {
     const fileId = `FI-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
     const result = await db`
       INSERT INTO file_manager_files (
-        file_id, name, folder_id, file_url, file_type, file_size, created_at, updated_at
+        file_id, name, folder_id, file_url, file_type, file_size, uploaded_by, status, employee_id, created_at, updated_at
       )
       VALUES (
-        ${fileId}, ${uniqueName}, ${folderId ?? null}, ${blobUrl}, ${file.type}, ${file.size}, NOW(), NOW()
+        ${fileId}, ${uniqueName}, ${folderId ?? null}, ${blobUrl}, ${file.type}, ${file.size}, ${uploadedBy ?? null}, ${status}, ${employeeId ?? null}, NOW(), NOW()
       )
       RETURNING *
     `;
@@ -82,11 +85,16 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const folderId = searchParams.get("folder_id");
+    const employeeId = searchParams.get("employee_id");
 
-    // List files in folder (null means Root)
-    const files = folderId 
-      ? await db`SELECT * FROM file_manager_files WHERE folder_id = ${folderId} ORDER BY created_at DESC`
-      : await db`SELECT * FROM file_manager_files WHERE folder_id IS NULL ORDER BY created_at DESC`;
+    let files;
+    if (employeeId) {
+      files = await db`SELECT * FROM file_manager_files WHERE employee_id = ${employeeId} ORDER BY created_at DESC`;
+    } else if (folderId) {
+      files = await db`SELECT * FROM file_manager_files WHERE folder_id = ${folderId} ORDER BY created_at DESC`;
+    } else {
+      files = await db`SELECT * FROM file_manager_files WHERE folder_id IS NULL AND employee_id IS NULL ORDER BY created_at DESC`;
+    }
 
     return withCors(req, { success: true, data: files });
 
