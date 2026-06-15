@@ -24,7 +24,10 @@ export async function GET(req: NextRequest) {
         (SELECT COUNT(*) FROM admin_users) as total_admins,
         (SELECT COUNT(*) FROM admin_sessions) as active_sessions,
         (SELECT COUNT(*) FROM employees) as total_employees,
-        (SELECT COUNT(*) FROM pending_employees) as pending_employees
+        (SELECT COUNT(*) FROM pending_employees) as pending_employees,
+        (SELECT COUNT(DISTINCT command) FROM employees WHERE command IS NOT NULL AND command <> '') as actual_commands,
+        (SELECT COUNT(*) FROM employees WHERE position ILIKE '%DIG%' OR position ILIKE '%Deputy Inspector General%' OR job_title ILIKE '%DIG%' OR job_title ILIKE '%Deputy Inspector General%') as actual_dig,
+        (SELECT COUNT(*) FROM employees WHERE position ILIKE '%AIG%' OR position ILIKE '%Assistant Inspector General%' OR job_title ILIKE '%AIG%' OR job_title ILIKE '%Assistant Inspector General%') as actual_aig
     `;
 
     // 2️⃣ Fetch administrators registry list
@@ -49,7 +52,17 @@ export async function GET(req: NextRequest) {
           totalAdmins: Number(tableCounts[0]?.total_admins ?? 0),
           activeSessions: Number(tableCounts[0]?.active_sessions ?? 0),
           totalEmployees: Number(tableCounts[0]?.total_employees ?? 0),
-          pendingEmployees: Number(tableCounts[0]?.pending_employees ?? 0)
+          pendingEmployees: Number(tableCounts[0]?.pending_employees ?? 0),
+          
+          // NPF organizational metrics
+          totalOfficersTarget: 328000,
+          statesCommandTarget: 37, // 36 plus FCT
+          digTarget: 8,
+          aigTarget: 13,
+          actualOfficers: Number(tableCounts[0]?.total_employees ?? 0),
+          actualStatesCommand: Number(tableCounts[0]?.actual_commands ?? 0),
+          actualDIG: Number(tableCounts[0]?.actual_dig ?? 0),
+          actualAIG: Number(tableCounts[0]?.actual_aig ?? 0),
         },
         admins: adminUsersSummary,
         systemConfig: configStatus

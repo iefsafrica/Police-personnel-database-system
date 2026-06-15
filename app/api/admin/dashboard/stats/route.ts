@@ -40,6 +40,16 @@ export async function GET(req: NextRequest) {
       pendingDocuments: 0,
       verifiedDocuments: 0,
       rejectedDocuments: 0,
+
+      // NPF organizational metrics
+      totalOfficersTarget: 328000,
+      statesCommandTarget: 37, // 36 plus FCT
+      digTarget: 8,
+      aigTarget: 13,
+      actualOfficers: 0,
+      actualStatesCommand: 0,
+      actualDIG: 0,
+      actualAIG: 0,
     };
 
     // Safe query helper
@@ -66,13 +76,13 @@ export async function GET(req: NextRequest) {
     if (employeesRow) {
       stats.totalEmployees = Number(employeesRow.total_employees);
       stats.activeEmployees = Number(employeesRow.active_employees);
+      stats.actualOfficers = Number(employeesRow.total_employees);
     }
 
     // Pending employees
     const pendingRow = await queryFirstRow<PendingEmployeesStatsRow>(`
       SELECT COUNT(*) AS pending_employees
-      FROM pending_employees
-      ;
+      FROM pending_employees;
     `);
     if (pendingRow) {
       stats.pendingEmployees = Number(pendingRow.pending_employees);
@@ -92,6 +102,23 @@ export async function GET(req: NextRequest) {
         stats.verifiedDocuments = Number(docRow.verified_documents);
         stats.rejectedDocuments = Number(docRow.rejected_documents);
       }
+    }
+
+    // Query actual NPF organizational ranks & commands dynamically
+    const npfRow = await queryFirstRow<{
+      actual_commands: string;
+      actual_dig: string;
+      actual_aig: string;
+    }>(`
+      SELECT 
+        (SELECT COUNT(DISTINCT command) FROM employees WHERE command IS NOT NULL AND command <> '') AS actual_commands,
+        (SELECT COUNT(*) FROM employees WHERE position ILIKE '%DIG%' OR position ILIKE '%Deputy Inspector General%' OR job_title ILIKE '%DIG%' OR job_title ILIKE '%Deputy Inspector General%') AS actual_dig,
+        (SELECT COUNT(*) FROM employees WHERE position ILIKE '%AIG%' OR position ILIKE '%Assistant Inspector General%' OR job_title ILIKE '%AIG%' OR job_title ILIKE '%Assistant Inspector General%') AS actual_aig;
+    `);
+    if (npfRow) {
+      stats.actualStatesCommand = Number(npfRow.actual_commands);
+      stats.actualDIG = Number(npfRow.actual_dig);
+      stats.actualAIG = Number(npfRow.actual_aig);
     }
 
     return withCors(req, { success: true, data: stats });
