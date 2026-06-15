@@ -3,6 +3,12 @@ import { neon } from "@neondatabase/serverless";
 import { withCors, handleOptions } from "@/lib/cors";
 import Papa from "papaparse";
 
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
 const sql = neon(process.env.DATABASE_URL!);
 
 // -------------------------

@@ -9,6 +9,12 @@ import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
 // Neon client
 const sql = neon(process.env.DATABASE_URL!);
 

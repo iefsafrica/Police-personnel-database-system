@@ -1,31 +1,17 @@
 import { neon } from "@neondatabase/serverless";
 import { withCors, handleOptions } from "@/lib/cors";
 import { NextRequest } from "next/server";
+import { uploadToBlob } from "@/lib/blob-storage";
 
 export const dynamic = "force-dynamic";
+
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
 const sql = neon(process.env.DATABASE_URL!);
-
-// Vercel Blob Token
-const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
-
-// Upload file to Vercel Blob storage
-async function uploadToBlob(file: File, fileName: string) {
-  const res = await fetch(`https://blob.vercel-storage.com/${fileName}`, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${BLOB_TOKEN}`,
-      "Content-Type": file.type,
-    },
-    body: file,
-  });
-
-  if (!res.ok) {
-    throw new Error(`Failed to upload ${fileName}: ${res.statusText}`);
-  }
-
-  // Return the public URL
-  return `https://blob.vercel-storage.com/${fileName}`;
-}
 
 // Handle CORS preflight
 export async function OPTIONS(req: NextRequest) {

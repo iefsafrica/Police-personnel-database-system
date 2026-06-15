@@ -6,6 +6,12 @@ import { uploadToBlob, deleteFromBlob } from "@/lib/blob-storage";
 
 export const dynamic = "force-dynamic";
 
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
 const db = neon(process.env.DATABASE_URL!);
 
 // ---------------- CORS ----------------
