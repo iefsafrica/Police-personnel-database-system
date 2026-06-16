@@ -27,7 +27,7 @@ export async function GET(
 
     // 1️⃣ Check active employees table
     const activeResult = await sql`
-      SELECT id, name, email, department, position, status, created_at, verification_id
+      SELECT *
       FROM employees
       WHERE UPPER(id) = ${regIdNormalized} OR UPPER(registration_id) = ${regIdNormalized}
       LIMIT 1
@@ -43,20 +43,17 @@ export async function GET(
         profileCompleteness: 100,
         message: "Profile is active and approved.",
         data: {
+          ...emp,
           registrationId: emp.id,
-          name: emp.name,
-          email: emp.email,
-          department: emp.department,
-          position: emp.position,
-          status: emp.status,
-          createdAt: emp.created_at
+          createdAt: emp.created_at,
+          updatedAt: emp.updated_at
         }
       });
     }
 
     // 2️⃣ Check pending employees table
     const pendingResult = await sql`
-      SELECT id, registration_id, firstname, surname, email, department, position, status, created_at, missing_fields
+      SELECT *
       FROM pending_employees
       WHERE UPPER(registration_id) = ${regIdNormalized}
       LIMIT 1
@@ -80,13 +77,11 @@ export async function GET(
           profileCompleteness,
           message: "Your profile is pending approval, but your NIN is not yet verified. Please verify your NIN.",
           data: {
+            ...pending,
             registrationId: pending.registration_id,
             name: `${pending.firstname} ${pending.surname}`,
-            email: pending.email,
-            department: pending.department,
-            position: pending.position,
-            status: pending.status,
-            createdAt: pending.created_at
+            createdAt: pending.created_at,
+            updatedAt: pending.updated_at
           }
         });
       }
@@ -99,13 +94,11 @@ export async function GET(
         profileCompleteness,
         message: "Profile is complete and pending administrator approval.",
         data: {
+          ...pending,
           registrationId: pending.registration_id,
           name: `${pending.firstname} ${pending.surname}`,
-          email: pending.email,
-          department: pending.department,
-          position: pending.position,
-          status: pending.status,
-          createdAt: pending.created_at
+          createdAt: pending.created_at,
+          updatedAt: pending.updated_at
         }
       });
     }
