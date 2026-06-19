@@ -690,3 +690,82 @@ export async function POST(req: NextRequest) {
     }, 500);
   }
 }
+
+// GET: List all pending employees that were imported (source = 'import')
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const page = Number(searchParams.get("page") || "1");
+    const limit = Number(searchParams.get("limit") || "50");
+    const offset = (page - 1) * limit;
+
+    const rows = await sql`
+      SELECT
+        id,
+        registration_id,
+        surname,
+        firstname,
+        email,
+        department,
+        position,
+        status,
+        source,
+        created_at,
+        missing_fields
+      FROM pending_employees
+      WHERE source = 'import'
+      ORDER BY created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+
+    const countResult = await sql`
+      SELECT COUNT(*) AS total FROM pending_employees WHERE source = 'import'
+    `;
+    const total = Number(countResult[0]?.total ?? 0);
+
+    return withCors(req, {
+      success: true,
+      data: {
+        employees: rows,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Import GET error:", error);
+    return withCors(req, {
+      success: false,
+      error: "Failed to fetch imported pending employees.",
+      details: error instanceof Error ? error.message : String(error),
+    }, 500);
+  }
+}
+
+// DELETE: Clear all pending employees that were imported (source = 'import')
+export async function DELETE(req: NextRequest) {
+  try {
+    const result = await sql`
+      DELETE FROM pending_employees
+      WHERE source = 'import'
+      RETURNING id, registration_id, email
+    `;
+
+    return withCors(req, {
+      success: true,
+      message: `Cleared ${result.length} imported pending employee(s).`,
+      deleted: result.length,
+      deletedRecords: result,
+    });
+  } catch (error) {
+    console.error("Import DELETE error:", error);
+    return withCors(req, {
+      success: false,
+      error: "Failed to clear imported pending employees.",
+      details: error instanceof Error ? error.message : String(error),
+    }, 500);
+  }
+}
