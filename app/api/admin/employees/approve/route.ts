@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     const regResult = await sql`
       SELECT id FROM registrations WHERE registration_id = ${employee.registration_id} LIMIT 1
     `;
-    if (regResult.length > 0) {
+    if (regResult.length > 0 && regResult[0]) {
       const regSerialId = regResult[0].id;
       const vdResult = await sql`
         SELECT id FROM "VerificationData"

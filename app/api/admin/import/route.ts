@@ -433,7 +433,7 @@ export async function POST(req: NextRequest) {
             WHERE nin = ${extracted.nin}
             LIMIT 1
           `;
-          if (vdResult.length > 0) {
+          if (vdResult.length > 0 && vdResult[0]) {
             ninVerified = true;
             systemVerifiedNinData = vdResult[0];
           }
