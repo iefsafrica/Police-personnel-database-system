@@ -87,29 +87,19 @@ export async function POST(req: NextRequest) {
     /* -------------------------
        VALIDATION
     ------------------------- */
-    if (
-      !employment_id_no ||
-      !service_no ||
-      !file_no ||
-      !rank_position ||
-      !department ||
-      !organization ||
-      !employment_type ||
-      !probation_period ||
-      !work_location ||
-      !date_of_first_appointment ||
-      !gradeLevel ||
-      !step ||
-      !salary_structure ||
-      !cadre ||
-      !bankName ||
-      !accountNumber ||
-      !pfa_name ||
-      !rsaPin
-    ) {
+    /* -------------------------
+       VALIDATION
+    ------------------------- */
+    const missing: string[] = [];
+    if (!employment_id_no) missing.push("employment_id_no");
+    if (!rank_position) missing.push("rank_position");
+    if (!department) missing.push("department");
+
+    if (missing.length > 0) {
       return withCors(req, {
         success: false,
-        message: "All required fields must be provided"
+        message: `Required fields are missing: ${missing.join(", ")}`,
+        missingFields: missing
       }, 400);
     }
 
@@ -135,6 +125,23 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedRegistrationId = existing[0]!.registration_id as string;
+
+    // --- Sensible default fallbacks for non-nullable DB fields ---
+    const fallbackServiceNo = service_no || "N/A";
+    const fallbackFileNo = file_no || "N/A";
+    const fallbackOrganization = organization || "Police Force";
+    const fallbackEmploymentType = employment_type || "Permanent";
+    const fallbackProbationPeriod = probation_period || "None";
+    const fallbackWorkLocation = work_location || "N/A";
+    const fallbackDateOfFirstAppointment = date_of_first_appointment || "1970-01-01";
+    const fallbackGl = gradeLevel || "1";
+    const fallbackStep = step || "1";
+    const fallbackSalaryStructure = salary_structure || "CONPSS";
+    const fallbackCadre = cadre || "N/A";
+    const fallbackBankName = bankName || "N/A";
+    const fallbackAccountNumber = accountNumber || "0000000000";
+    const fallbackPfaName = pfa_name || "N/A";
+    const fallbackRsaPin = rsaPin || "N/A";
 
     /* -------------------------
        INSERT EMPLOYEE INFO
@@ -164,23 +171,23 @@ export async function POST(req: NextRequest) {
       VALUES (
         ${resolvedRegistrationId},
         ${employment_id_no},
-        ${service_no},
-        ${file_no},
+        ${fallbackServiceNo},
+        ${fallbackFileNo},
         ${rank_position},
         ${department},
-        ${organization},
-        ${employment_type},
-        ${probation_period},
-        ${work_location},
-        ${date_of_first_appointment},
-        ${gradeLevel},
-        ${step},
-        ${salary_structure},
-        ${cadre},
-        ${bankName},
-        ${accountNumber},
-        ${pfa_name},
-        ${rsaPin}
+        ${fallbackOrganization},
+        ${fallbackEmploymentType},
+        ${fallbackProbationPeriod},
+        ${fallbackWorkLocation},
+        ${fallbackDateOfFirstAppointment},
+        ${fallbackGl},
+        ${fallbackStep},
+        ${fallbackSalaryStructure},
+        ${fallbackCadre},
+        ${fallbackBankName},
+        ${fallbackAccountNumber},
+        ${fallbackPfaName},
+        ${fallbackRsaPin}
       )
       ON CONFLICT (registration_id) DO UPDATE SET
         employment_id_no = EXCLUDED.employment_id_no,

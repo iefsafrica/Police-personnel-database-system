@@ -543,111 +543,239 @@ export async function POST(req: NextRequest) {
         // Prepare JSON metadata representation
         const jsonData = { ...row, "BVN Verified": row["BVN Verified"] || null, "NIN Verified": row["NIN Verified"] || null };
 
-        // Insert into pending_employees using the SQL driver
-        const result = await sql`
-          INSERT INTO pending_employees (
-            registration_id,
-            surname,
-            firstname,
-            email,
-            department,
-            position,
-            status,
-            source,
-            hire_date,
-            date_of_birth,
-            marital_status,
-            gender,
-            state_of_origin,
-            lga_origin,
-            job_title,
-            assignment_status,
-            location,
-            zone,
-            supervisor,
-            command,
-            grade_category,
-            grade,
-            step,
-            salary,
-            residence_address,
-            contact_address,
-            telephone_number,
-            nationality,
-            bank_name,
-            sort_code,
-            account_number,
-            pfa_name,
-            pin_number,
-            payroll_group,
-            staff_category,
-            date_terminated,
-            legacy_id,
-            assignment_start_date,
-            person_start_date,
-            date_of_last_promotion,
-            unit,
-            organization_name,
-            employee_type,
-            bvn,
-            tax_id,
-            created_at,
-            updated_at,
-            metadata,
-            missing_fields
-          ) VALUES (
-            ${registrationId},
-            ${extracted.surname},
-            ${extracted.firstname},
-            ${extracted.email},
-            ${extracted.department || null},
-            ${extracted.position || null},
-            'pending_approval',
-            'import',
-            ${parseDate(extracted.hire_date)},
-            ${parseDate(extracted.date_of_birth)},
-            ${extracted.marital_status || null},
-            ${extracted.gender || null},
-            ${extracted.state_of_origin || null},
-            ${extracted.lga_origin || null},
-            ${extracted.job_title || null},
-            ${extracted.assignment_status || null},
-            ${extracted.location || null},
-            ${extracted.zone || null},
-            ${extracted.supervisor || null},
-            ${extracted.command || null},
-            ${extracted.grade_category || null},
-            ${extracted.grade || null},
-            ${extracted.step || null},
-            ${parseDecimal(extracted.salary)},
-            ${extracted.residence_address || null},
-            ${extracted.contact_address || null},
-            ${extracted.telephone_number || null},
-            ${extracted.nationality || null},
-            ${extracted.bank_name || null},
-            ${extracted.sort_code || null},
-            ${extracted.account_number || null},
-            ${extracted.pfa_name || null},
-            ${extracted.pin_number || null},
-            ${extracted.payroll_group || null},
-            ${extracted.staff_category || null},
-            ${parseDate(extracted.date_terminated)},
-            ${extracted.legacy_id || null},
-            ${parseDate(extracted.assignment_start_date)},
-            ${parseDate(extracted.person_start_date)},
-            ${parseDate(extracted.date_of_last_promotion)},
-            ${extracted.unit || null},
-            ${extracted.organization_name || null},
-            ${extracted.employee_type || null},
-            ${extracted.bvn || null},
-            ${extracted.tax_id || null},
-            NOW(),
-            NOW(),
-            ${JSON.stringify(jsonData)},
-            ${JSON.stringify(validation)}
-          )
-          RETURNING *
-        `;
+        let regIdToDelete = null;
+        let result;
+        try {
+          // Check NIN duplicates in VerificationData
+          if (extracted.nin) {
+            const ninExists = await sql`SELECT 1 FROM "VerificationData" WHERE nin = ${extracted.nin} LIMIT 1`;
+            if (ninExists.length > 0) {
+              throw new Error(`NIN "${extracted.nin}" is already registered to another employee.`);
+            }
+          }
+
+          // 1. Insert into registrations
+          const registrationInserted = await sql`
+            INSERT INTO registrations (
+              registration_id,
+              status,
+              current_step,
+              submitted_at,
+              updated_at
+            )
+            VALUES (${registrationId}, 'pending_approval', 'submitted', NOW(), NOW())
+            RETURNING id
+          `;
+          const regRecordId = registrationInserted[0]!.id;
+          regIdToDelete = registrationId;
+
+          // 2. Insert into personal_info
+          const parsedDob = parseDate(extracted.date_of_birth);
+          const dobToInsert = parsedDob ? parsedDob : new Date("1970-01-01");
+
+          const fallbackTitle = "Mr";
+          const fallbackTelephone = extracted.telephone_number || "0000000000";
+          const fallbackGender = extracted.gender || "Unknown";
+          const fallbackMaritalStatus = extracted.marital_status || "Single";
+          const fallbackStateOfOrigin = extracted.state_of_origin || "Unknown";
+          const fallbackResidenceLga = extracted.lga_origin || "Unknown";
+          const fallbackResidenceState = extracted.location || "Unknown";
+          const fallbackResidenceAddress = extracted.residence_address || "Unknown";
+          const fallbackNokName = "Unknown";
+          const fallbackNokRelationship = "Unknown";
+          const fallbackNokPhone = "0000000000";
+          const fallbackNokAddress = "Unknown";
+
+          await sql`
+            INSERT INTO personal_info (
+              registration_id, title, surname, first_name, other_names, phone_number, email,
+              date_of_birth, sex, marital_status, state_of_origin, lga, state_of_residence,
+              address_state_of_residence, next_of_kin_name, next_of_kin_relationship,
+              next_of_kin_phone_number, next_of_kin_address
+            )
+            VALUES (
+              ${registrationId}, ${fallbackTitle}, ${extracted.surname}, ${extracted.firstname}, ${null}, ${fallbackTelephone}, ${extracted.email},
+              ${dobToInsert}, ${fallbackGender}, ${fallbackMaritalStatus}, ${fallbackStateOfOrigin}, ${fallbackResidenceLga}, ${fallbackResidenceState},
+              ${fallbackResidenceAddress}, ${fallbackNokName}, ${fallbackNokRelationship},
+              ${fallbackNokPhone}, ${fallbackNokAddress}
+            )
+          `;
+
+          // 3. Insert into employment_info
+          const parsedHireDate = parseDate(extracted.hire_date);
+          const hireDateToInsert = parsedHireDate ? parsedHireDate : new Date("1970-01-01");
+
+          await sql`
+            INSERT INTO employment_info (
+              registration_id, employment_id_no, service_no, file_no, rank_position, department,
+              organization, employment_type, probation_period, work_location, date_of_first_appointment,
+              gl, step, salary_structure, cadre, name_of_bank, account_number, pfa_name, rsapin
+            )
+            VALUES (
+              ${registrationId},
+              ${extracted.registrationId || `EMP-${registrationId.substring(0, 8)}`},
+              'N/A',
+              'N/A',
+              ${extracted.position || 'N/A'},
+              ${extracted.department || 'N/A'},
+              ${extracted.organization_name || 'Police Force'},
+              ${extracted.employee_type || 'Permanent'},
+              'None',
+              ${extracted.location || 'N/A'},
+              ${hireDateToInsert},
+              ${extracted.grade || '1'},
+              ${extracted.step || '1'},
+              'CONPSS',
+              ${extracted.grade_category || 'N/A'},
+              ${extracted.bank_name || 'N/A'},
+              ${extracted.account_number || '0000000000'},
+              ${extracted.pfa_name || 'N/A'},
+              ${extracted.pin_number || 'N/A'}
+            )
+          `;
+
+          // 4. Insert into VerificationData
+          await sql`
+            INSERT INTO "VerificationData" (
+              id, registration_id, nin, firstname, surname, middlename, email, gender, 
+              telephoneno, birthdate, state_of_origin, residence_address, residence_state, 
+              residence_lga, profession, maritalstatus
+            )
+            VALUES (
+              ${crypto.randomUUID()},
+              ${String(regRecordId)},
+              ${extracted.nin || null},
+              ${extracted.firstname},
+              ${extracted.surname},
+              null,
+              ${extracted.email},
+              ${extracted.gender || null},
+              ${extracted.telephone_number || null},
+              ${extracted.date_of_birth ? String(extracted.date_of_birth) : null},
+              ${extracted.state_of_origin || null},
+              ${extracted.residence_address || null},
+              ${extracted.location || null},
+              ${extracted.lga_origin || null},
+              null,
+              ${extracted.marital_status || null}
+            )
+          `;
+
+          // 5. Insert into pending_employees
+          result = await sql`
+            INSERT INTO pending_employees (
+              registration_id,
+              surname,
+              firstname,
+              email,
+              department,
+              position,
+              status,
+              source,
+              hire_date,
+              date_of_birth,
+              marital_status,
+              gender,
+              state_of_origin,
+              lga_origin,
+              job_title,
+              assignment_status,
+              location,
+              zone,
+              supervisor,
+              command,
+              grade_category,
+              grade,
+              step,
+              salary,
+              residence_address,
+              contact_address,
+              telephone_number,
+              nationality,
+              bank_name,
+              sort_code,
+              account_number,
+              pfa_name,
+              pin_number,
+              payroll_group,
+              staff_category,
+              date_terminated,
+              legacy_id,
+              assignment_start_date,
+              person_start_date,
+              date_of_last_promotion,
+              unit,
+              organization_name,
+              employee_type,
+              bvn,
+              tax_id,
+              created_at,
+              updated_at,
+              metadata,
+              missing_fields
+            ) VALUES (
+              ${registrationId},
+              ${extracted.surname},
+              ${extracted.firstname},
+              ${extracted.email},
+              ${extracted.department || null},
+              ${extracted.position || null},
+              'pending_approval',
+              'import',
+              ${parseDate(extracted.hire_date)},
+              ${parseDate(extracted.date_of_birth)},
+              ${extracted.marital_status || null},
+              ${extracted.gender || null},
+              ${extracted.state_of_origin || null},
+              ${extracted.lga_origin || null},
+              ${extracted.job_title || null},
+              ${extracted.assignment_status || null},
+              ${extracted.location || null},
+              ${extracted.zone || null},
+              ${extracted.supervisor || null},
+              ${extracted.command || null},
+              ${extracted.grade_category || null},
+              ${extracted.grade || null},
+              ${extracted.step || null},
+              ${parseDecimal(extracted.salary)},
+              ${extracted.residence_address || null},
+              ${extracted.contact_address || null},
+              ${extracted.telephone_number || null},
+              ${extracted.nationality || null},
+              ${extracted.bank_name || null},
+              ${extracted.sort_code || null},
+              ${extracted.account_number || null},
+              ${extracted.pfa_name || null},
+              ${extracted.pin_number || null},
+              ${extracted.payroll_group || null},
+              ${extracted.staff_category || null},
+              ${parseDate(extracted.date_terminated)},
+              ${extracted.legacy_id || null},
+              ${parseDate(extracted.assignment_start_date)},
+              ${parseDate(extracted.person_start_date)},
+              ${parseDate(extracted.date_of_last_promotion)},
+              ${extracted.unit || null},
+              ${extracted.organization_name || null},
+              ${extracted.employee_type || null},
+              ${extracted.bvn || null},
+              ${extracted.tax_id || null},
+              NOW(),
+              NOW(),
+              ${JSON.stringify(jsonData)},
+              ${JSON.stringify(validation)}
+            )
+            RETURNING *
+          `;
+        } catch (err: any) {
+          if (regIdToDelete) {
+            try {
+              await sql`DELETE FROM registrations WHERE registration_id = ${regIdToDelete}`;
+            } catch (cleanupErr) {
+              console.error("Cleanup failed:", cleanupErr);
+            }
+          }
+          throw err;
+        }
 
         insertedEmployees.push({
           rowNumber: rowIndex,
@@ -748,6 +876,21 @@ export async function GET(req: NextRequest) {
 // DELETE: Clear all pending employees that were imported (source = 'import')
 export async function DELETE(req: NextRequest) {
   try {
+    // 1. Fetch registration_ids for all imported pending employees
+    const pendingImports = await sql`
+      SELECT registration_id FROM pending_employees WHERE source = 'import'
+    `;
+    const regIds = pendingImports.map(r => r.registration_id).filter(Boolean);
+
+    // 2. Delete from registrations (this cascades and deletes from personal_info, employment_info, and VerificationData)
+    for (const regId of regIds) {
+      await sql`
+        DELETE FROM registrations
+        WHERE registration_id = ${regId}
+      `;
+    }
+
+    // 3. Delete from pending_employees
     const result = await sql`
       DELETE FROM pending_employees
       WHERE source = 'import'

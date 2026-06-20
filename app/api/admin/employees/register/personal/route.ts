@@ -76,26 +76,16 @@ export async function POST(req: NextRequest) {
     /* -------------------------
        VALIDATION
     ------------------------- */
-    if (
-      !surname ||
-      !first_name ||
-      !phone_number ||
-      !email ||
-      !date_of_birth ||
-      !sex ||
-      !marital_status ||
-      !state_of_origin ||
-      !lga ||
-      !state_of_residence ||
-      !address_state_of_residence ||
-      !next_of_kin_name ||
-      !next_of_kin_relationship ||
-      !next_of_kin_phone_number ||
-      !next_of_kin_address
-    ) {
+    const missing: string[] = [];
+    if (!surname) missing.push("surname");
+    if (!first_name) missing.push("first_name");
+    if (!email) missing.push("email");
+
+    if (missing.length > 0) {
       return withCors(req, {
         success: false,
-        message: "All required fields must be provided"
+        message: `Required fields are missing: ${missing.join(", ")}`,
+        missingFields: missing
       }, 400);
     }
 
@@ -121,6 +111,21 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedRegistrationId = existing[0]!.registration_id as string;
+
+    // --- Sensible default fallbacks for non-nullable DB fields ---
+    const fallbackTitle = title || "Mr";
+    const fallbackTelephone = phone_number || "0000000000";
+    const fallbackBirthdate = date_of_birth || "1970-01-01";
+    const fallbackGender = sex || "Unknown";
+    const fallbackMaritalStatus = marital_status || "Single";
+    const fallbackStateOfOrigin = state_of_origin || "Unknown";
+    const fallbackResidenceLga = lga || "Unknown";
+    const fallbackResidenceState = state_of_residence || "Unknown";
+    const fallbackResidenceAddress = address_state_of_residence || "Unknown";
+    const fallbackNokName = next_of_kin_name || "Unknown";
+    const fallbackNokRelationship = next_of_kin_relationship || "Unknown";
+    const fallbackNokPhone = next_of_kin_phone_number || "0000000000";
+    const fallbackNokAddress = next_of_kin_address || "Unknown";
 
     /* -------------------------
        INSERT PERSONAL INFO
@@ -148,23 +153,23 @@ export async function POST(req: NextRequest) {
       )
       VALUES (
         ${resolvedRegistrationId},
-        ${title ?? null},
+        ${fallbackTitle},
         ${surname},
         ${first_name},
         ${other_names ?? null},
-        ${phone_number},
+        ${fallbackTelephone},
         ${email},
-        ${date_of_birth},
-        ${sex},
-        ${marital_status},
-        ${state_of_origin},
-        ${lga},
-        ${state_of_residence},
-        ${address_state_of_residence},
-        ${next_of_kin_name},
-        ${next_of_kin_relationship},
-        ${next_of_kin_phone_number},
-        ${next_of_kin_address}
+        ${fallbackBirthdate},
+        ${fallbackGender},
+        ${fallbackMaritalStatus},
+        ${fallbackStateOfOrigin},
+        ${fallbackResidenceLga},
+        ${fallbackResidenceState},
+        ${fallbackResidenceAddress},
+        ${fallbackNokName},
+        ${fallbackNokRelationship},
+        ${fallbackNokPhone},
+        ${fallbackNokAddress}
       )
       ON CONFLICT (registration_id) DO UPDATE SET
         title = EXCLUDED.title,

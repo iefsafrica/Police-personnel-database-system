@@ -85,13 +85,32 @@ export async function POST(req: NextRequest) {
       }, 409)
     }
 
-    // Try to find matching VerificationData for the employee
-    const vdResult = await sql`
-      SELECT id FROM "VerificationData"
-      WHERE registration_id = ${employee.registration_id}
-      LIMIT 1
-    `
-    const verificationId = vdResult.length > 0 && vdResult[0] ? (vdResult[0] as any).id : null
+    // Try to find matching VerificationData for the employee (supports both numeric serial ID and NPF string ID)
+    let verificationId = null;
+    const regResult = await sql`
+      SELECT id FROM registrations WHERE registration_id = ${employee.registration_id} LIMIT 1
+    `;
+    if (regResult.length > 0) {
+      const regSerialId = regResult[0].id;
+      const vdResult = await sql`
+        SELECT id FROM "VerificationData"
+        WHERE registration_id = ${employee.registration_id} 
+           OR registration_id = ${String(regSerialId)}
+        LIMIT 1
+      `;
+      if (vdResult.length > 0 && vdResult[0]) {
+        verificationId = (vdResult[0] as any).id;
+      }
+    } else {
+      const vdResult = await sql`
+        SELECT id FROM "VerificationData"
+        WHERE registration_id = ${employee.registration_id}
+        LIMIT 1
+      `;
+      if (vdResult.length > 0 && vdResult[0]) {
+        verificationId = (vdResult[0] as any).id;
+      }
+    }
 
     // Insert into employees
     await sql`

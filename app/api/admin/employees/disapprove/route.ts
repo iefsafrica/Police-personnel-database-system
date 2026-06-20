@@ -39,6 +39,12 @@ export async function POST(req: NextRequest) {
       }, 404)
     }
 
+    // Delete from registrations (cascades and deletes from personal_info, employment_info, and VerificationData)
+    await sql`
+      DELETE FROM registrations
+      WHERE registration_id = ${registrationId}
+    `
+
     // Delete from pending_employees
     await sql`
       DELETE FROM pending_employees
