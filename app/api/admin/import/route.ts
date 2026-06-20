@@ -111,44 +111,7 @@ function calculateCompleteness(employee: any) {
   return { percentage, missing };
 }
 
-async function generateImportRegistrationId(localUsedIds: Set<string>): Promise<string> {
-  let nextIdNum = 1;
-  while (true) {
-    const candidate = canonicalizeRegistrationId(`NPF-${nextIdNum}`);
-    
-    // Check local set first
-    if (localUsedIds.has(candidate)) {
-      nextIdNum++;
-      continue;
-    }
 
-    // Check registrations table
-    const regExists = await sql`
-      SELECT 1 FROM registrations 
-      WHERE registration_id = ${candidate} OR registration_id = ${candidate.toLowerCase()} 
-      LIMIT 1
-    `;
-    if (regExists.length > 0) {
-      nextIdNum++;
-      continue;
-    }
-
-    // Check pending_employees table
-    const pendingExists = await sql`
-      SELECT 1 FROM pending_employees 
-      WHERE registration_id = ${candidate} OR registration_id = ${candidate.toLowerCase()}
-      LIMIT 1
-    `;
-    if (pendingExists.length > 0) {
-      nextIdNum++;
-      continue;
-    }
-
-    // Found a valid one!
-    localUsedIds.add(candidate);
-    return candidate;
-  }
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -300,6 +263,93 @@ export async function POST(req: NextRequest) {
       }, 500);
     }
 
+    // Pre-fetch all emails from rows to avoid duplicate checks inside the loop
+    const emailsInSheet = Array.from(new Set(
+      rows.map(row => getRowValue(row, ["Email", "email", "Email Address", "email_address"]).trim())
+          .filter(Boolean)
+          .map(e => e.toLowerCase())
+    ));
+
+    const existingPendingEmails = new Set<string>();
+    const existingActiveEmails = new Set<string>();
+
+    if (emailsInSheet.length > 0) {
+      const pendingEmailsResult = await sql`
+        SELECT LOWER(email) AS email FROM pending_employees WHERE LOWER(email) = ANY(${emailsInSheet}::text[])
+      `;
+      pendingEmailsResult.forEach((r: any) => existingPendingEmails.add(r.email.toLowerCase()));
+
+      const activeEmailsResult = await sql`
+        SELECT LOWER(email) AS email FROM employees WHERE LOWER(email) = ANY(${emailsInSheet}::text[])
+      `;
+      activeEmailsResult.forEach((r: any) => existingActiveEmails.add(r.email.toLowerCase()));
+    }
+
+    // Pre-fetch all NINs from rows to avoid queries inside the loop
+    const ninsInSheet = Array.from(new Set(
+      rows.map(row => getRowValue(row, ["NIN", "nin", "NIN Number", "nin_number", "NINNumber"]).trim())
+          .filter(Boolean)
+    ));
+
+    const existingNinsMap = new Map<string, { firstname: string; surname: string }>();
+
+    if (ninsInSheet.length > 0) {
+      const ninsResult = await sql`
+        SELECT nin, firstname, surname FROM "VerificationData" WHERE nin = ANY(${ninsInSheet}::text[])
+      `;
+      ninsResult.forEach((r: any) => {
+        existingNinsMap.set(r.nin, { firstname: r.firstname || "", surname: r.surname || "" });
+      });
+    }
+
+    // Pre-fetch all provided registration IDs
+    const providedRegIds = Array.from(new Set(
+      rows.map(row => {
+        const rawId = getRowValue(row, ["EmploymentIdNo", "employment_id_no", "Employee ID", "EmployeeID", "Staff ID", "staff_id"]);
+        return rawId ? canonicalizeRegistrationId(rawId) : null;
+      }).filter(Boolean) as string[]
+    ));
+
+    const existingRegistrationIds = new Set<string>();
+
+    if (providedRegIds.length > 0) {
+      const regsResult = await sql`
+        SELECT registration_id FROM registrations WHERE registration_id = ANY(${providedRegIds}::text[])
+      `;
+      regsResult.forEach((r: any) => existingRegistrationIds.add(r.registration_id));
+
+      const pendsResult = await sql`
+        SELECT registration_id FROM pending_employees WHERE registration_id = ANY(${providedRegIds}::text[])
+      `;
+      pendsResult.forEach((r: any) => existingRegistrationIds.add(r.registration_id));
+    }
+
+    // Get the maximum existing NPF suffix number to start sequential generation
+    const maxRegResult = await sql`
+      SELECT MAX(CAST(SUBSTRING(registration_id FROM '^NPF-([0-9]+)$') AS INTEGER)) AS max_id 
+      FROM registrations 
+      WHERE registration_id ~* '^NPF-[0-9]+$'
+    `;
+    const maxPendingResult = await sql`
+      SELECT MAX(CAST(SUBSTRING(registration_id FROM '^NPF-([0-9]+)$') AS INTEGER)) AS max_id 
+      FROM pending_employees 
+      WHERE registration_id ~* '^NPF-[0-9]+$'
+    `;
+    const maxRegId = Number(maxRegResult[0]?.max_id ?? 0);
+    const maxPendingId = Number(maxPendingResult[0]?.max_id ?? 0);
+    let nextIdNum = Math.max(maxRegId, maxPendingId) + 1;
+
+    const generateImportRegistrationId = (localUsed: Set<string>): string => {
+      while (true) {
+        const candidate = canonicalizeRegistrationId(`NPF-${nextIdNum}`);
+        nextIdNum++;
+        if (!localUsed.has(candidate)) {
+          localUsed.add(candidate);
+          return candidate;
+        }
+      }
+    };
+
     const insertedEmployees = [];
     const failedRows = [];
     const localUsedIds = new Set<string>();
@@ -331,19 +381,13 @@ export async function POST(req: NextRequest) {
         let registrationId = "";
         if (rawRegistrationId) {
           registrationId = canonicalizeRegistrationId(rawRegistrationId);
-          // Check for registrationId duplicates
-          const regExists = await sql`
-            SELECT 1 FROM registrations WHERE registration_id = ${registrationId} LIMIT 1
-          `;
-          const pendingExists = await sql`
-            SELECT 1 FROM pending_employees WHERE registration_id = ${registrationId} LIMIT 1
-          `;
-          if (regExists.length > 0 || pendingExists.length > 0 || localUsedIds.has(registrationId)) {
+          // Check for registrationId duplicates in memory Set
+          if (existingRegistrationIds.has(registrationId) || localUsedIds.has(registrationId)) {
             throw new Error(`Registration ID "${registrationId}" is already in use.`);
           }
           localUsedIds.add(registrationId);
         } else {
-          registrationId = await generateImportRegistrationId(localUsedIds);
+          registrationId = generateImportRegistrationId(localUsedIds);
         }
 
         // Email fallback generation using registrationId
@@ -406,17 +450,11 @@ export async function POST(req: NextRequest) {
         }
 
         // Email duplicate checks
-        const pendingEmailExists = await sql`
-          SELECT 1 FROM pending_employees WHERE LOWER(email) = ${extracted.email.toLowerCase()} LIMIT 1
-        `;
-        if (pendingEmailExists.length > 0) {
+        if (existingPendingEmails.has(extracted.email.toLowerCase())) {
           throw new Error(`Email "${extracted.email}" is already registered as a pending employee.`);
         }
 
-        const activeEmailExists = await sql`
-          SELECT 1 FROM employees WHERE LOWER(email) = ${extracted.email.toLowerCase()} LIMIT 1
-        `;
-        if (activeEmailExists.length > 0) {
+        if (existingActiveEmails.has(extracted.email.toLowerCase())) {
           throw new Error(`Email "${extracted.email}" is already registered to an active employee.`);
         }
 
@@ -428,14 +466,10 @@ export async function POST(req: NextRequest) {
 
         let systemVerifiedNinData = null;
         if (extracted.nin) {
-          const vdResult = await sql`
-            SELECT firstname, surname FROM "VerificationData"
-            WHERE nin = ${extracted.nin}
-            LIMIT 1
-          `;
-          if (vdResult.length > 0 && vdResult[0]) {
+          const cachedVd = existingNinsMap.get(extracted.nin);
+          if (cachedVd) {
             ninVerified = true;
-            systemVerifiedNinData = vdResult[0];
+            systemVerifiedNinData = cachedVd;
           }
         }
 
@@ -548,8 +582,7 @@ export async function POST(req: NextRequest) {
         try {
           // Check NIN duplicates in VerificationData
           if (extracted.nin) {
-            const ninExists = await sql`SELECT 1 FROM "VerificationData" WHERE nin = ${extracted.nin} LIMIT 1`;
-            if (ninExists.length > 0) {
+            if (existingNinsMap.has(extracted.nin)) {
               throw new Error(`NIN "${extracted.nin}" is already registered to another employee.`);
             }
           }
@@ -775,6 +808,16 @@ export async function POST(req: NextRequest) {
             }
           }
           throw err;
+        }
+
+        // Update pre-fetched sets/maps in memory to prevent duplicate records in the same CSV from passing
+        existingPendingEmails.add(extracted.email.toLowerCase());
+        existingRegistrationIds.add(registrationId);
+        if (extracted.nin) {
+          existingNinsMap.set(extracted.nin, {
+            firstname: extracted.firstname,
+            surname: extracted.surname
+          });
         }
 
         insertedEmployees.push({
