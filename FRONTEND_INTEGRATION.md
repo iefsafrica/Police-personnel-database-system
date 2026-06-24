@@ -487,8 +487,9 @@ import { apiClient } from "./client";
 import type { BulkImportResponse } from "@/types/api.types";
 
 // POST /api/admin/import
-// Accepts a CSV or Excel (.xlsx / .xls) file.
-// Must be sent as multipart/form-data with the file under the key "file".
+// Accepts either:
+//   1) multipart/form-data with the file under the key "file", or
+//   2) JSON { fileUrl, fileName } after the file has already been uploaded to storage.
 //
 // Required columns (at least one name column + email):
 //   FirstName / First Name / first_name
@@ -524,6 +525,9 @@ export async function bulkImportEmployees(
   );
   return data;
 }
+
+// For large uploads, use a direct-to-storage step first and then call:
+// await apiClient.post("/api/admin/import", { fileUrl, fileName });
 ```
 
 ---
@@ -762,6 +766,7 @@ import { bulkImportEmployees } from "@/api/importApi";
 // Usage pattern:
 //   const { mutate, isPending, data } = useBulkImport();
 //   mutate({ file: selectedFile, onProgress: setPercent });
+//   // For large files, upload to storage first and then submit fileUrl/fileName.
 //
 //   data.summary.successful  ← how many were imported
 //   data.summary.failed      ← how many rows had errors

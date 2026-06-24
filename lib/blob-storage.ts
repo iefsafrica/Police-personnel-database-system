@@ -1,6 +1,6 @@
 import crypto from "crypto";
 
-function generateSignature(params: Record<string, any>, apiSecret: string): string {
+export function generateSignature(params: Record<string, any>, apiSecret: string): string {
   const sortedKeys = Object.keys(params).sort();
   const paramString = sortedKeys.map(key => `${key}=${params[key]}`).join("&");
   return crypto.createHash("sha1").update(`${paramString}${apiSecret}`).digest("hex");

@@ -115,23 +115,60 @@ function calculateCompleteness(employee: any) {
 
 export async function POST(req: NextRequest) {
   try {
-    // Parse input (requires multipart/form-data file upload)
     const contentType = req.headers.get("content-type") || "";
+    let file: File | null = null;
+    let sourceUrl = "";
 
-    if (!contentType.includes("multipart/form-data")) {
-      return withCors(req, { 
-        success: false, 
-        error: "No file uploaded. Please attach a CSV or Excel file using form-data under the 'file' key." 
-      }, 400);
+    if (contentType.includes("application/json")) {
+      const payload = await req.json().catch(() => null) as
+        | { fileUrl?: string; fileName?: string }
+        | null;
+
+      if (!payload?.fileUrl || !payload?.fileName) {
+        return withCors(req, {
+          success: false,
+          error: "Missing fileUrl or fileName. Upload the file to storage first, then send its URL to this endpoint."
+        }, 400);
+      }
+
+      sourceUrl = payload.fileUrl.trim();
+      const fetched = await fetch(sourceUrl);
+      if (!fetched.ok) {
+        return withCors(req, {
+          success: false,
+          error: "Unable to fetch the uploaded file from storage.",
+          details: `GET ${sourceUrl} failed with ${fetched.status}`
+        }, 400);
+      }
+
+      const buffer = await fetched.arrayBuffer();
+      const contentTypeFromRemote = fetched.headers.get("content-type") || "application/octet-stream";
+      file = new File([new Uint8Array(buffer)], payload.fileName.trim(), { type: contentTypeFromRemote });
+    } else {
+      if (!contentType.includes("multipart/form-data")) {
+        return withCors(req, { 
+          success: false, 
+          error: "No file uploaded. Attach a CSV or Excel file with form-data under the 'file' key, or send { fileUrl, fileName } as JSON." 
+        }, 400);
+      }
+
+      const formData = await req.formData();
+      const uploaded = formData.get("file");
+
+      if (!isFile(uploaded) || uploaded.size === 0 || !uploaded.name || uploaded.name.trim() === "") {
+        return withCors(req, {
+          success: false,
+          error: "No file uploaded. Please attach a CSV or Excel file under the 'file' key in form-data."
+        }, 400);
+      }
+
+      file = uploaded;
     }
 
-    const formData = await req.formData();
-    const file = formData.get("file");
-
-    if (!isFile(file) || file.size === 0 || !file.name || file.name.trim() === "") {
-      return withCors(req, { 
-        success: false, 
-        error: "No file uploaded. Please attach a CSV or Excel file under the 'file' key in form-data." 
+    if (!file) {
+      return withCors(req, {
+        success: false,
+        error: "File parsing failed before import could start."
       }, 400);
     }
 
@@ -239,10 +276,9 @@ export async function POST(req: NextRequest) {
       }, 400);
     }
 
-    // Upload CSV/Excel spreadsheet to Cloudinary
     let cloudinaryUrl = "";
     try {
-      cloudinaryUrl = await uploadToBlob(file, file.name);
+      cloudinaryUrl = sourceUrl || await uploadToBlob(file, file.name);
       
       // Save record in file_manager_files
       const fileId = `FI-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
