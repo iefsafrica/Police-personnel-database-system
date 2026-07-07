@@ -32,7 +32,11 @@ export function resolveRegistrationIdInput(
 ): string | null {
   const raw = headerValue?.trim() || bodyValue?.trim() || "";
   if (!raw) return null;
-  return canonicalizeRegistrationId(raw);
+  return raw.toUpperCase();
+}
+
+export function normalizeRegistrationLookupValue(value: string): string {
+  return value.trim().toUpperCase();
 }
 
 export function hasRegistrationId(value?: string | null): value is string {

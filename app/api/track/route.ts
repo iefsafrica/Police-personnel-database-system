@@ -5,6 +5,7 @@ import {
   buildRegistrationIdVariants,
   normalizeRegistrationId,
 } from "@/lib/registration-id";
+import { buildPersonnelCardData, hasNinValue } from "@/lib/personnel-card";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -127,12 +128,19 @@ async function getRegistrationBundleByEmail(email: string) {
     LIMIT 1
   `;
 
+  const verificationRow = verification[0] ?? null;
+  const personalRow = personal[0] ?? null;
   return {
     registration: registrationRow,
-    verification: verification[0] ?? null,
-    personal: personal[0] ?? null,
+    verification: verificationRow,
+    personal: personalRow,
     employment: employment[0] ?? null,
     documents: documents[0] ?? null,
+    card: buildPersonnelCardData({
+      registration: registrationRow,
+      verification: verificationRow,
+      personal: personalRow,
+    }),
   };
 }
 
@@ -174,12 +182,18 @@ async function trackByIdOrEmail(
         success: true,
         type: "registration",
         status: registration.status,
+        showVerifyNin: !hasNinValue({ verification: verification[0], personal: personal[0] }),
         data: {
           registration,
           verification: verification[0] ?? null,
           personal: personal[0] ?? null,
           employment: employment[0] ?? null,
           documents: documents[0] ?? null,
+          card: buildPersonnelCardData({
+            registration,
+            verification: verification[0] ?? null,
+            personal: personal[0] ?? null,
+          }),
         },
       };
     }
@@ -190,7 +204,11 @@ async function trackByIdOrEmail(
         success: true,
         type: "pending_employee",
         status: pending.status,
-        data: pending,
+        showVerifyNin: !hasNinValue(pending),
+        data: {
+          ...pending,
+          card: buildPersonnelCardData({ pending }),
+        },
       };
     }
 
@@ -200,7 +218,11 @@ async function trackByIdOrEmail(
         success: true,
         type: "employee",
         status: employee.status,
-        data: employee,
+        showVerifyNin: !hasNinValue(employee),
+        data: {
+          ...employee,
+          card: buildPersonnelCardData({ employee }),
+        },
       };
     }
   }
@@ -212,6 +234,7 @@ async function trackByIdOrEmail(
         success: true,
         type: "registration",
         status: bundle.registration.status,
+        showVerifyNin: !hasNinValue(bundle.card),
         data: bundle,
       };
     }
@@ -228,7 +251,11 @@ async function trackByIdOrEmail(
         success: true,
         type: "pending_employee",
         status: pending[0]!.status,
-        data: pending[0]!,
+        showVerifyNin: !hasNinValue(pending[0]),
+        data: {
+          ...pending[0]!,
+          card: buildPersonnelCardData({ pending: pending[0]! }),
+        },
       };
     }
 
@@ -244,7 +271,11 @@ async function trackByIdOrEmail(
         success: true,
         type: "employee",
         status: employee[0]!.status,
-        data: employee[0]!,
+        showVerifyNin: !hasNinValue(employee[0]),
+        data: {
+          ...employee[0]!,
+          card: buildPersonnelCardData({ employee: employee[0]! }),
+        },
       };
     }
   }

@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import { withCors, handleOptions } from "@/lib/cors";
 import { verifyNIN } from "@/lib/verification-service";
 import { generateRegistrationId } from "@/lib/register-utils";
+import { normalizeRegistrationLookupValue, resolveRegistrationIdInput } from "@/lib/registration-id";
 
 export const dynamic = "force-dynamic";
 
@@ -47,8 +48,12 @@ export async function POST(req: NextRequest) {
     }, 400);
   }
 
+  const incomingRegistrationId = resolveRegistrationIdInput(
+    req.headers.get("x-registration-id"),
+    body.registration_id
+  );
   const verification = await verifyNIN(nin);
-  const registration = await findOrCreateRegistration(nin, verification.verified);
+  const registration = await findOrCreateRegistration(nin, verification.verified, incomingRegistrationId);
 
   if (verification.verified && verification.data) {
     const registrationPk = String(registration.id);
@@ -83,7 +88,8 @@ export async function POST(req: NextRequest) {
 
 async function findOrCreateRegistration(
   nin: string,
-  shouldStoreNin: boolean
+  shouldStoreNin: boolean,
+  incomingRegistrationId?: string | null
 ): Promise<RegistrationRow> {
   const existing = await sql`
     SELECT id, registration_id
@@ -93,10 +99,23 @@ async function findOrCreateRegistration(
   ` as RegistrationRow[];
 
   if (existing.length > 0) {
+    if (incomingRegistrationId && existing[0]!.registration_id !== incomingRegistrationId) {
+      await sql`
+        UPDATE registrations
+        SET registration_id = ${incomingRegistrationId},
+            updated_at = NOW()
+        WHERE id = ${existing[0]!.id}
+      `;
+      return {
+        ...existing[0]!,
+        registration_id: incomingRegistrationId,
+      };
+    }
+
     return existing[0]!;
   }
 
-  const registrationId = await generateRegistrationId();
+  const registrationId = incomingRegistrationId || (await generateRegistrationId());
   const storedNin = shouldStoreNin ? nin : null;
 
   const inserted = await sql`
@@ -114,6 +133,10 @@ async function findOrCreateRegistration(
       'personal',
       NOW()
     )
+    ON CONFLICT (nin) DO UPDATE SET
+      registration_id = EXCLUDED.registration_id,
+      nin = EXCLUDED.nin,
+      updated_at = NOW()
     RETURNING id, registration_id
   ` as RegistrationRow[];
 

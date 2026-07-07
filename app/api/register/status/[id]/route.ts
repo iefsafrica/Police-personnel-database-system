@@ -63,6 +63,11 @@ export async function GET(
       const pending = pendingResult[0]!;
       const missingFields = (pending.missing_fields || {}) as Record<string, any>;
       
+      const hasNin = Boolean(
+        pending.nin ||
+        pending.metadata?.nin ||
+        pending.metadata?.NIN
+      );
       const ninVerified = missingFields.ninVerified === true;
       const profileCompleteness = typeof missingFields.profileCompleteness === 'number' 
         ? missingFields.profileCompleteness 
@@ -73,6 +78,7 @@ export async function GET(
           success: true,
           exists: true,
           ninVerified: false,
+          showVerifyNin: !hasNin,
           status: "pending_approval",
           profileCompleteness,
           message: "Your profile is pending approval, but your NIN is not yet verified. Please verify your NIN.",
@@ -124,6 +130,7 @@ export async function GET(
       const hasEmployment = employmentCheck.length > 0;
       const hasDocs = docsCheck.length > 0;
       const hasVd = vdCheck.length > 0 && vdCheck[0]?.nin !== null && vdCheck[0]?.nin !== "";
+      const hasNin = hasVd;
 
       // Calculate completeness percentage
       let profileCompleteness = 10; // base step
@@ -149,6 +156,7 @@ export async function GET(
           success: true,
           exists: true,
           ninVerified: false,
+          showVerifyNin: !hasNin,
           status: reg.status || "draft",
           profileCompleteness,
           message: "Please verify your NIN to proceed with registration.",
@@ -167,6 +175,7 @@ export async function GET(
         success: true,
         exists: true,
         ninVerified: true,
+        showVerifyNin: false,
         status: reg.status || "draft",
         profileCompleteness,
         message: "NIN is verified. Continue filling out your registration details.",

@@ -4,7 +4,7 @@ import { withCors, handleOptions } from "@/lib/cors";
 import nodemailer from "nodemailer";
 import { v4 as uuidv4 } from "uuid";
 import {
-  buildRegistrationIdVariants,
+  normalizeRegistrationLookupValue,
   resolveRegistrationIdInput,
 } from "@/lib/registration-id";
 import { generateRegistrationId } from "@/lib/register-utils";
@@ -24,6 +24,8 @@ interface RegistrationBody {
   email: string;
   gender?: string;
   telephoneno?: string;
+  telephone_number?: string;
+  phone_number?: string;
   birthdate?: string;
   state_of_origin?: string;
   residence_address?: string;
@@ -44,25 +46,22 @@ const transporter = nodemailer.createTransport({
 });
 
 async function findRegistrationByAnyFormat(input: string) {
-  for (const candidate of buildRegistrationIdVariants(input)) {
-    const rows = await sql`
-      SELECT id, registration_id, status, current_step
-      FROM registrations
-      WHERE registration_id = ${candidate}
-      LIMIT 1
-    `;
+  const registrationLookup = normalizeRegistrationLookupValue(input);
+  const rows = await sql`
+    SELECT r.id, r.registration_id, r.status, r.current_step
+    FROM registrations r
+    LEFT JOIN "VerificationData" v ON v.registration_id = r.id
+    WHERE UPPER(r.registration_id) = ${registrationLookup}
+       OR UPPER(COALESCE(v.userid, '')) = ${registrationLookup}
+    LIMIT 1
+  `;
 
-    if (rows.length > 0) {
-      return rows[0] as {
-        id: number;
-        registration_id: string;
-        status: string;
-        current_step: string;
-      };
-    }
-  }
-
-  return null;
+  return (rows[0] as {
+    id: number;
+    registration_id: string;
+    status: string;
+    current_step: string;
+  }) ?? null;
 }
 
 async function upsertVerificationData(input: {
@@ -82,6 +81,8 @@ async function upsertVerificationData(input: {
       email,
       gender,
       telephoneno,
+      telephone_number,
+      phone_number,
       birthdate,
       state_of_origin,
       residence_address,
@@ -99,7 +100,7 @@ async function upsertVerificationData(input: {
       ${body.middlename ?? null},
       ${body.email},
       ${body.gender ?? null},
-      ${body.telephoneno ?? null},
+      ${(body.telephoneno || body.telephone_number || body.phone_number) ?? null},
       ${body.birthdate ?? null},
       ${body.state_of_origin ?? null},
       ${body.residence_address ?? null},
