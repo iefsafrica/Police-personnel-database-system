@@ -45,12 +45,8 @@ interface PersonalInfoBody {
   pin_number?: string;
   telephone_number?: string;
   telephoneno?: string;
-  phone_number?: string;
   gender?: string;
-  state_of_origin?: string;
   lga_origin?: string;
-  marital_status?: string;
-  date_of_birth?: string;
   residence_address?: string;
   contact_address?: string;
 }
@@ -82,6 +78,7 @@ export async function POST(req: NextRequest) {
       surname,
       first_name,
       other_names,
+      phone_number,
       email,
       date_of_birth,
       sex,
@@ -275,7 +272,6 @@ export async function POST(req: NextRequest) {
       "First Name": first_name,
       "Other Names": other_names ?? null,
       Email: email,
-      "Telephone Number": fallbackTelephone,
       "Date Of Birth": fallbackBirthdate,
       Gender: fallbackGender,
       "Marital Status": fallbackMaritalStatus,

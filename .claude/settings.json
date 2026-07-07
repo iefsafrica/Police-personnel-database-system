@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git -C \"c:/Users/PC/Desktop/Police-personnel-database-system\" status)"
+      "Bash(git -C \"c:/Users/PC/Desktop/Police-personnel-database-system\" status)",
+      "Bash(npm run *)",
+      "Bash(rm app/api/accounts/index.ts app/api/accounts/\\\\[id\\\\].ts)",
+      "Bash(pnpm run *)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\PC\\Desktop\\Police-personnel-database-system\\app\\api\\accounts"
     ]
   }
 }

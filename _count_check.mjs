@@ -1,0 +1,13 @@
+import { neon } from "@neondatabase/serverless";
+import fs from "fs";
+const envLocal = fs.readFileSync(".env.local", "utf8");
+const match = envLocal.match(/DATABASE_URL="([^"]+)"/);
+const sql = neon(match[1]);
+const t0 = Date.now();
+const count = await sql`SELECT COUNT(*) AS total FROM employees`;
+const t1 = Date.now();
+console.log("count query ms:", t1 - t0, "total:", count[0].total);
+const t2 = Date.now();
+const rows = await sql`SELECT * FROM employees WHERE status = 'active' ORDER BY created_at DESC LIMIT 10000 OFFSET 0`;
+const t3 = Date.now();
+console.log("big fetch ms:", t3 - t2, "rows:", rows.length, "approxBytes:", JSON.stringify(rows).length);

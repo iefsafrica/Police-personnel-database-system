@@ -13,6 +13,7 @@ const NIN_REGEX = /^\d{11}$/;
 
 type VerifyNinBody = {
   nin?: string;
+  registration_id?: string;
 };
 
 type RegistrationRow = {
