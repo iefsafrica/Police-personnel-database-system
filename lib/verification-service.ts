@@ -80,7 +80,8 @@ export async function verifyNIN(
     if (!response.ok) {
       return createErrorResult(
         data.message || "API request failed",
-        response.status
+        response.status,
+        data // Pass the raw data for debugging
       );
     }
 
@@ -191,7 +192,7 @@ function normalizeResponse(data: NetAppsNINResponse): VerificationResult {
   return {
     verified: false,
     message: data?.message || "NIN verification failed",
-    data: null,
+    data: data, // Return the full data to see what failed
   };
 }
 
@@ -200,12 +201,13 @@ function normalizeResponse(data: NetAppsNINResponse): VerificationResult {
  */
 function createErrorResult(
   message: string,
-  statusCode?: number
+  statusCode?: number,
+  data: any = null
 ): VerificationResult {
   const result: VerificationResult = {
     verified: false,
     message,
-    data: null,
+    data,
   };
 
   if (typeof statusCode === "number") {
